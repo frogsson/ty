@@ -1,2 +1,2 @@
 # tty-Tistory-scraper-
-Download pictures from Tistory the easy way
+Download pictures from Tistory the fast way
