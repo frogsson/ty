@@ -94,7 +94,7 @@ class PicLinks(HTMLParser):
                     link_listg.append(l)
 
 url = sys.argv[1].replace(" ", "")
-number_of_threads = 6
+number_of_threads = 12
 number_of_pages = []
 multiple_pages = False
 changed_file_name = 0
@@ -104,13 +104,13 @@ pics_downloaded = 0
 for opt in sys.argv[1:]:
     if opt == "-help":
         print(
-        "   Download a specific tistory page:\n"
+        "   Download a specific tistory page\n"
         "   >tty http://idol-grapher.tistory.com/140\n\n"
         "-p\n"
         "   Download pictures from multiple pages\n"
         "   >tty http://idol-grapher.tistory.com/ -p 140-150\n"
         "-t\n"
-        "   Specify number of simultaneous downloads (defaul is 6)\n"
+        "   Specify number of simultaneous downloads (default is 12)\n"
         "   >tty http://idol-grapher.tistory.com/140 -t 4\n"
         )
         sys.exit()
@@ -124,11 +124,11 @@ for opt in sys.argv[1:]:
             number_of_pages.append(x + int(first_num))
     elif opt == "-t":
         t_num = sys.argv[sys.argv.index("-t") + 1]
-        if t_num.isdigit() and int(t_num) > 0 and int(t_num) < 21:
+        if t_num.isdigit() and int(t_num) > 0 and int(t_num) < 31:
             number_of_threads = t_num
         else:
             print(
-            "Threads(-t) needs to be a number in between 1-20\n\n"
+            "Threads(-t) needs to be a number in between 1-30\n\n"
             "   >tty http://jjtaeng.tistory.com/244 -t 3\n"
             )
             sys.exit()
