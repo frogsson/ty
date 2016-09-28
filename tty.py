@@ -15,94 +15,57 @@ def saver():
     global pics_downloaded
     global changed_file_name
     global same_file_length
-    data = q.get()
-    i = data["url"]
-    if "=" in i:
-        i = urllib.request.url2pathname(i)
-        i = i.split("=")[-1]
-    if "http" not in i:
-        i = "http://" + i
-    try:
-        img = urllib.request.urlopen(i)
-    except urllib.error.HTTPError:
-        print("HTTP Error 404: Not Found:", i)
-        img_error.append(i)
-    else:
-        file_name = img.info()["Content-Disposition"]
-        if file_name == None:
-            o = urllib.request.url2pathname(i)
-            file_name = o.split("/")[-1]
-            file_name = file_name + ".jpg"
+    while q.qsize() > 0:
+        data = q.get()
+        i = data["url"]
+        if "=" in i:
+            i = urllib.request.url2pathname(i)
+            i = i.split("=")[-1]
+        if "http" not in i:
+            i = "http://" + i
+        try:
+            img = urllib.request.urlopen(i)
+        except urllib.error.HTTPError:
+            print("HTTP Error 404: Not Found:", i)
+            img_error.append(i)
         else:
-            file_name = file_name.split('"')[1]
-            file_name = urllib.request.url2pathname(file_name)
-        if data["date"] == None:
-            data["date"] = "No Title"
-        if organize == True:
-            img_path = os.path.join(data["date"], file_name)
-            if not os.path.exists(data["date"]):
-                os.makedirs(data["date"])
-        else:
-            img_path = file_name
-        while True:
-            if not os.path.exists(img_path):
-                print("Downloading: %s" % (i))
-                imglink = open(img_path, "wb")
-                imglink.write(img.read())
-                imglink.close()
-                pics_downloaded += 1
-                break
+            file_name = img.info()["Content-Disposition"]
+            if file_name == None:
+                o = urllib.request.url2pathname(i)
+                file_name = o.split("/")[-1]
+                file_name = file_name + ".jpg"
             else:
-                nonlocal_img = img.info()["Content-Length"]
-                with open(img_path, "rb") as f:
-                    local_img = len(f.read())
-                    f.close()
-                if int(nonlocal_img) != int(local_img):
-                    file_name = file_name.split(".jpg")[0]
-                    file_name = file_name + "I" + ".jpg"
-                    if not os.path.exists(file_name):
-                        changed_file_name += 1
-                else:
-                    same_file_length += 1
+                file_name = file_name.split('"')[1]
+                file_name = urllib.request.url2pathname(file_name)
+            if data["date"] == None:
+                data["date"] = "No Title"
+            if organize == True:
+                img_path = os.path.join(data["date"], file_name)
+                if not os.path.exists(data["date"]):
+                    os.makedirs(data["date"])
+            else:
+                img_path = file_name
+            while True:
+                if not os.path.exists(img_path):
+                    print("Downloading: %s" % (i))
+                    imglink = open(img_path, "wb")
+                    imglink.write(img.read())
+                    imglink.close()
+                    pics_downloaded += 1
                     break
-    if q.qsize() > 0:
-        thread_starter()
-    elif threading.active_count() <= 2 and q.qsize() <= 0:
-        msg_total = (
-        " Scraper found %s image%s." %
-        (total_found,
-        "s" if total_found > 1 else "",
-        ))
-        msg_dl = (
-        " %s saved%s" %
-        (pics_downloaded,
-        "." if same_file_length <= 0 else ",",
-        ))
-        msg_length = (
-        " %s already existed and did not save." %
-        (same_file_length,
-        ))
-        print("Done!%s%s%s" % (
-        msg_total if total_found > 0 else " Scraper could not find any images.",
-        msg_dl if pics_downloaded > 0 else "",
-        msg_length if same_file_length > 0 else "",
-        ))
-        if len(page_error) > 0:
-            print(
-            "\n%s page%s did not load." % (
-            len(page_error),
-            "s" if len(page_error) > 1 else "",
-            ))
-            for x in page_error:
-                print(x)
-        if len(img_error) > 0:
-            print(
-            "\n%s image%s did not load." % (
-            len(img_error),
-            "s" if len(img_error) > 1 else "",
-            ))
-            for x in img_error:
-                print(x)
+                else:
+                    nonlocal_img = img.info()["Content-Length"]
+                    with open(img_path, "rb") as f:
+                        local_img = len(f.read())
+                        f.close()
+                    if int(nonlocal_img) != int(local_img):
+                        file_name = file_name.split(".jpg")[0]
+                        file_name = file_name + "I" + ".jpg"
+                        if not os.path.exists(file_name):
+                            changed_file_name += 1
+                    else:
+                        same_file_length += 1
+                        break
 
 def thread_starter():
     t = threading.Thread(target=saver)
@@ -229,7 +192,8 @@ if multiple_pages == True:
     for page in number_of_pages:
         multi_url = url + str(page)
         q.put(multi_url)
-    page_threads = [threading.Thread(target=work_page) for i in range(4)]
+        
+    page_threads = [threading.Thread(target=work_page) for i in range(2)]
     for thread in page_threads:
         thread.start()
     for thread in page_threads:
@@ -248,5 +212,45 @@ if int(number_of_threads) > q.qsize():
     number_of_threads = q.qsize()
 total_found = q.qsize()
 print("\nStarting download:")
-for x in range(int(number_of_threads)):
-    thread_starter()
+
+img_threads = [threading.Thread(target=saver) for i in range(int(number_of_threads))]
+for thread in img_threads:
+    thread.start()
+for thread in img_threads:
+    thread.join()
+
+msg_total = (
+" Scraper found %s image%s." %
+(total_found,
+"s" if total_found > 1 else "",
+))
+msg_dl = (
+" %s saved%s" %
+(pics_downloaded,
+"." if same_file_length <= 0 else ",",
+))
+msg_length = (
+" %s already existed and did not save." %
+(same_file_length,
+))
+print("Done!%s%s%s" % (
+msg_total if total_found > 0 else " Scraper could not find any images.",
+msg_dl if pics_downloaded > 0 else "",
+msg_length if same_file_length > 0 else "",
+))
+if len(page_error) > 0:
+    print(
+    "\n%s page%s did not load." % (
+    len(page_error),
+    "s" if len(page_error) > 1 else "",
+    ))
+    for x in page_error:
+        print(x)
+if len(img_error) > 0:
+    print(
+    "\n%s image%s did not load." % (
+    len(img_error),
+    "s" if len(img_error) > 1 else "",
+    ))
+    for x in img_error:
+        print(x)
