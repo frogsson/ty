@@ -1,4 +1,4 @@
-import urllib.request, sys, queue, threading, time, os
+import urllib.request, sys, queue, threading, time, os, http
 from html.parser import HTMLParser
 
 
@@ -58,7 +58,10 @@ def saver():
                 if not os.path.exists(img_path):
                     print("%s" % (i))
                     img_link = open(img_path, "wb")
-                    img_link.write(img.read())
+                    try:
+                        img_link.write(img.read())
+                    except http.client.IncompleteRead as e:
+                        img_link.write(e.partial)
                     img_link.close()
                     pics_downloaded += 1
                     break
