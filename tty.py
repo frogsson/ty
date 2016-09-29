@@ -4,7 +4,7 @@ from html.parser import HTMLParser
 
 def get_source(url):
     try:
-        with urllib.request.urlopen(url) as u:
+        with urllib.request.urlopen(url, timeout=240) as u:
             html = u.read()
             return html
     except urllib.error.HTTPError:
@@ -24,33 +24,42 @@ def saver():
         if "http" not in i:
             i = "http://" + i
         try:
-            img = urllib.request.urlopen(i)
+            img = urllib.request.urlopen(i, timeout=240)
         except urllib.error.HTTPError:
             print("HTTP Error 404: Not Found:", i)
             img_error.append(i)
         else:
+            if img.info()["Content-Type"] == "image/gif":
+                break
             file_name = img.info()["Content-Disposition"]
             if file_name == None:
                 o = urllib.request.url2pathname(i)
                 file_name = o.split("/")[-1]
-                file_name = file_name + ".jpg"
+                if img.info()["Content-Type"] == "image/jpeg":
+                    file_name = file_name + ".jpg"
+                elif img.info()["Content-Type"] == "image/png":
+                    file_name = file_name + ".png"
             else:
                 file_name = file_name.split('"')[1]
                 file_name = urllib.request.url2pathname(file_name)
             if data["date"] == None:
                 data["date"] = "No Title"
             if organize == True:
-                img_path = os.path.join(data["date"], file_name)
-                if not os.path.exists(data["date"]):
-                    os.makedirs(data["date"])
+                no_good_letters = '\/:*?"<>|'
+                folder_name = data["date"]
+                for char in no_good_letters:
+                    folder_name = folder_name.replace(char, "")
+                img_path = os.path.join(folder_name, file_name)
+                if not os.path.exists(folder_name):
+                    os.makedirs(folder_name)
             else:
                 img_path = file_name
             while True:
                 if not os.path.exists(img_path):
-                    print("Downloading: %s" % (i))
-                    imglink = open(img_path, "wb")
-                    imglink.write(img.read())
-                    imglink.close()
+                    print("%s" % (i))
+                    img_link = open(img_path, "wb")
+                    img_link.write(img.read())
+                    img_link.close()
                     pics_downloaded += 1
                     break
                 else:
@@ -59,8 +68,12 @@ def saver():
                         local_img = len(f.read())
                         f.close()
                     if int(nonlocal_img) != int(local_img):
-                        file_name = file_name.split(".jpg")[0]
-                        file_name = file_name + "I" + ".jpg"
+                        if img.info()["Content-Type"] == "image/jpeg":
+                            file_name = file_name.split(".jpg")[0]
+                            file_name = file_name + "I" + ".jpg"
+                        elif img.info()["Content-Type"] == "image/png":
+                            file_name = file_name.split(".png")[0]
+                            file_name = file_name + "I" + ".png"
                         if not os.path.exists(file_name):
                             changed_file_name += 1
                     else:
@@ -117,6 +130,7 @@ pics_downloaded = 0
 img_error = []
 page_error = []
 q = queue.Queue()
+page_q = queue.Queue()
 
 for opt in sys.argv[1:]:
     if opt == "-help":
@@ -177,9 +191,10 @@ for opt in sys.argv[1:]:
         organize = True
 
 def work_page():
-    while q.qsize() > 0:
-        multi_url = q.get()
-        print(multi_url)
+    while page_q.qsize() > 0:
+        page_nmbr = page_q.get()
+        multi_url = str(url) + str(page_nmbr)
+        print("%s" % multi_url)
         html = get_source(multi_url)
         if html != None:
             PicLinks().feed(html.decode("utf-8"))
@@ -190,12 +205,12 @@ if multiple_pages == True:
     if url[-1] != "/":
         url = url + "/"
     for page in number_of_pages:
-        multi_url = url + str(page)
-        q.put(multi_url)
-        
-    page_threads = [threading.Thread(target=work_page) for i in range(2)]
+        page_q.put(page)
+
+    page_threads = [threading.Thread(target=work_page) for i in range(4)]
     for thread in page_threads:
         thread.start()
+        time.sleep(0.2) #LookupError:unknown encoding:idna | error I get without this
     for thread in page_threads:
         thread.join()
 else:
@@ -216,6 +231,7 @@ print("\nStarting download:")
 img_threads = [threading.Thread(target=saver) for i in range(int(number_of_threads))]
 for thread in img_threads:
     thread.start()
+    time.sleep(0.1)
 for thread in img_threads:
     thread.join()
 
