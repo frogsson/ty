@@ -44,7 +44,7 @@ def saver():
             if data["date"] == None:
                 data["date"] = "No Title"
             if organize == True:
-                no_good_letters = '\/:*?"<>|'
+                no_good_letters = '\/:*?"<>|.'
                 folder_name = data["date"]
                 for char in no_good_letters:
                     folder_name = folder_name.replace(char, "")
