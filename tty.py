@@ -69,6 +69,7 @@ def saver():
                         img_link.write(temp_file)
                         img_link.close()
                         pics_downloaded += 1
+
                     break
                 else:
                     nonlocal_img = img.info()["Content-Length"]
@@ -82,6 +83,8 @@ def saver():
                         elif img.info()["Content-Type"] == "image/png":
                             file_name = file_name.split(".png")[0]
                             file_name = file_name + "I" + ".png"
+                        if organize == True:
+                            img_path = os.path.join(folder_name, file_name)
                     else:
                         same_file_length += 1
                         break
