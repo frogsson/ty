@@ -4,7 +4,7 @@ from html.parser import HTMLParser
 
 def get_source(url):
     try:
-        with urllib.request.urlopen(url, timeout=240) as u:
+        with urllib.request.urlopen(url) as u:
             html = u.read()
             return html
     except urllib.error.HTTPError:
@@ -13,7 +13,6 @@ def get_source(url):
 
 def saver():
     global pics_downloaded
-    global changed_file_name
     global same_file_length
     while q.qsize() > 0:
         data = q.get()
@@ -24,10 +23,10 @@ def saver():
         if "http" not in i:
             i = "http://" + i
         try:
-            img = urllib.request.urlopen(i, timeout=240)
+            img = urllib.request.urlopen(i)
         except urllib.error.HTTPError:
             print("HTTP Error 404: Not Found:", i)
-            img_error.append(i)
+            img_error.append("%s - page %s" % (i, data["page"]))
         else:
             if img.info()["Content-Type"] == "image/gif":
                 break
@@ -57,13 +56,19 @@ def saver():
             while True:
                 if not os.path.exists(img_path):
                     print("%s" % (i))
-                    img_link = open(img_path, "wb")
                     try:
-                        img_link.write(img.read())
-                    except http.client.IncompleteRead as e:
-                        img_link.write(e.partial)
-                    img_link.close()
-                    pics_downloaded += 1
+                        temp_file = img.read()
+                    except http.client.IncompleteRead:
+                        if data["retry"] == True:
+                            data["retry"] = False
+                            q.put(data)
+                        else:
+                            retry_error.append(data)
+                    else:
+                        img_link = open(img_path, "wb")
+                        img_link.write(temp_file)
+                        img_link.close()
+                        pics_downloaded += 1
                     break
                 else:
                     nonlocal_img = img.info()["Content-Length"]
@@ -77,23 +82,17 @@ def saver():
                         elif img.info()["Content-Type"] == "image/png":
                             file_name = file_name.split(".png")[0]
                             file_name = file_name + "I" + ".png"
-                        if not os.path.exists(file_name):
-                            changed_file_name += 1
                     else:
                         same_file_length += 1
                         break
 
-def thread_starter():
-    t = threading.Thread(target=saver)
-    t.start()
-
-link_listg = []
 class PicLinks(HTMLParser):
     def __init__(self):
         HTMLParser.__init__(self)
         self.title_check = False
         self.title = ""
         self.title_dict = {}
+        self.parsed_list = []
 
     def handle_starttag(self, tag, attrs):
         # Tistory
@@ -112,28 +111,23 @@ class PicLinks(HTMLParser):
                     l = value.replace("image", "original")
                     self.title_dict["date"] = self.title
                     self.title_dict["url"] = l
-                    if self.title_dict not in link_listg:
-                        link_listg.append(self.title_dict.copy())
-        # Imgur
-        if tag == "a":
-            for name, value in attrs:
-                if ".jpg" in value:
-                    l = value.replace("//", "")
-                    link_listg.append(l)
-
+                    self.title_dict["retry"] = True
+                    if self.title_dict not in self.parsed_list:
+                        self.parsed_list.append(self.title_dict.copy())
 
 url = sys.argv[1].replace(" ", "")
 number_of_threads = 12
 number_of_pages = []
 multiple_pages = False
 organize = False
-changed_file_name = 0
 same_file_length = 0
 pics_downloaded = 0
 img_error = []
 page_error = []
+retry_error = []
 q = queue.Queue()
 page_q = queue.Queue()
+link_list = []
 
 for opt in sys.argv[1:]:
     if opt == "-help":
@@ -200,7 +194,11 @@ def work_page():
         print("%s" % multi_url)
         html = get_source(multi_url)
         if html != None:
-            PicLinks().feed(html.decode("utf-8"))
+            parser = PicLinks()
+            parser.feed(html.decode("utf-8"))
+            for x in parser.parsed_list:
+                x["page"] = page_nmbr
+                link_list.append(x)
 
 if multiple_pages == True:
     number_of_pages.sort(key=int)
@@ -210,7 +208,7 @@ if multiple_pages == True:
     for page in number_of_pages:
         page_q.put(page)
 
-    page_threads = [threading.Thread(target=work_page) for i in range(4)]
+    page_threads = [threading.Thread(target=work_page, daemon=True) for i in range(4)]
     for thread in page_threads:
         thread.start()
         time.sleep(0.2) #LookupError:unknown encoding:idna | error I get without this
@@ -220,10 +218,13 @@ else:
     print("Fetching page source...")
     html = get_source(url)
     if html != None:
-        PicLinks().feed(html.decode("utf-8"))
+        parser = PicLinks()
+        parser.feed(html.decode("utf-8"))
+        for x in parser.parsed_list:
+            x["page"] = url.split("/")[-1]
+            link_list.append(x)
     else:
         sys.exit()
-link_list = link_listg
 for x in link_list:
     q.put(x)
 if int(number_of_threads) > q.qsize():
@@ -231,12 +232,41 @@ if int(number_of_threads) > q.qsize():
 total_found = q.qsize()
 print("\nStarting download:")
 
-img_threads = [threading.Thread(target=saver) for i in range(int(number_of_threads))]
+img_threads = [threading.Thread(target=saver, daemon=True) for i in range(int(number_of_threads))]
 for thread in img_threads:
     thread.start()
     time.sleep(0.1)
 for thread in img_threads:
     thread.join()
+
+if len(retry_error) > 0:
+    print("\nInterrupted downloads:")
+    for x in retry_error:
+        print(x["url"])
+    while 1:
+        yes_no = input("%s download%s %s interrupted, do you want to try download %s again? Y/n\n" %
+        (len(retry_error),
+        "s" if len(retry_error) > 1 else "",
+        "were" if len(retry_error) > 1 else "was",
+        "them" if len(retry_error) > 1 else "it"
+        ))
+        if yes_no.lower() == "y" or yes_no.lower() == "yes" or yes_no == "":
+            for x in retry_error:
+                q.put(x)
+            break
+        elif yes_no.lower() == "n" or yes_no.lower() == "no":
+            for x in retry_error:
+                y = "%s - page %s" % (x["url"], x["page"])
+                img_error.append(y)
+            break
+        else:
+            print("Not a valid input.\n")
+
+    if q.qsize() > 0:
+        print("\nStarting download:")
+        backup_thread = threading.Thread(target=saver, daemon=True)
+        backup_thread.start()
+        backup_thread.join()
 
 msg_total = (
 " Scraper found %s image%s." %
