@@ -14,13 +14,16 @@ def get_source(url):
 def saver():
     global imgs_downloaded
     global same_file_length
+    global total_found
     while q.qsize() > 0:
         data = q.get()
         i = data["url"]
-        if "=" in i:
+        if "=" in i and "tistory.com" in i:
             i = urllib.request.url2pathname(i)
             i = i.split("=")[-1]
         if "http" not in i:
+            print(i)
+            i = i.strip("/")
             i = "http://" + i
         try:
             img = urllib.request.urlopen(i)
@@ -28,6 +31,9 @@ def saver():
         except urllib.error.HTTPError:
             print(i, "HTTP Error 404: Not Found")
             img_error.append("%s - page %s" % (i, data["page"]))
+            break
+        except urllib.error.URLError:
+            url_error.append(i)
             break
         except:
             if data["retry"] == True:
@@ -37,13 +43,24 @@ def saver():
             else:
                 retry_error.append(data)
                 break
-        types = ["image/jpeg", "imgage/png", "image/gif"]
-        if content_type not in types:
+
+        #filters files under 10kb
+        if int(img.info()["Content-Length"]) < 10000:
+            total_found -= 1
             break
+        #filters out non jpg/gif/png
+        types = ["image/jpeg", "image/png", "image/gif"]
+        s_types = [".jpg", ".jpeg", ".png", ".gif"]
+        if content_type not in types:
+            content_type_error.append(i, "- page", data["page"])
+            break
+
         file_name = img.info()["Content-Disposition"]
         if file_name == None:
-            i = urllib.request.url2pathname(i)
             file_name = i.split("/")[-1]
+            for s_type in s_types:
+                if s_type in file_name[-4:]:
+                    file_name = file_name.split(".")[0]
             if content_type == "image/jpeg":
                 file_name = file_name + ".jpg"
             elif content_type == "image/png":
@@ -53,6 +70,19 @@ def saver():
         else:
             file_name = file_name.split('"')[1]
             file_name = urllib.request.url2pathname(file_name)
+        file_extension = False # makes sure of filename having an extension
+        jpeg_replaced = file_name.replace("jpeg", "jpg")
+        for s_type in s_types:
+            if s_type in jpeg_replaced[-4:]:
+                file_extension = True
+        if file_extension == False:
+            if content_type == "image/jpeg":
+                file_name = file_name + ".jpg"
+            elif content_type == "image/png":
+                file_name = file_name + ".png"
+            elif content_type == "image/gif":
+                file_name = file_name + ".gif"
+
         if data["date"] == None:
             data["date"] = "No Title"
         if organize == True:
@@ -65,7 +95,7 @@ def saver():
                 os.makedirs(folder_name)
         else:
             img_path = file_name.strip()
-        while True:
+        for _ in range(9999):
             if not os.path.exists(img_path):
                 print(i)
                 try:
@@ -90,7 +120,7 @@ def saver():
                 if int(nonlocal_img) != int(local_img):
                     s_types = [".jpg", ".jpeg", ".png", ".gif"]
                     n_nmbr = file_name[file_name.rfind("(")+1:file_name.rfind(")")]
-                    if n_nmbr.isdigit() and file_name[file_name.rfind(")")+1:] in s_types:
+                    if n_nmbr.isdigit() and file_name[file_name.rfind(")")+1:].lower() in s_types:
                         file_nmbr = int(n_nmbr) + 1
                         split_what = " "
                     else:
@@ -132,13 +162,16 @@ class ImgLinks(HTMLParser):
 
         if tag == "img":
             for name, value in attrs:
-                if name == "src" and "tistory.com" in value:
-                    l = value.replace("image", "original")
-                    self.title_dict["date"] = self.title
-                    self.title_dict["url"] = l
-                    self.title_dict["retry"] = True
-                    if self.title_dict not in self.parsed_list:
-                        self.parsed_list.append(self.title_dict.copy())
+                if name == "src":
+                    l = value
+                    if "tistory.com" in value:
+                        l = value.replace("image", "original")
+                    if "daumcdn.net" not in value or "tistory.com" in value:
+                        self.title_dict["date"] = self.title
+                        self.title_dict["url"] = l
+                        self.title_dict["retry"] = True
+                        if self.title_dict not in self.parsed_list:
+                            self.parsed_list.append(self.title_dict.copy())
 
 url = sys.argv[1].replace(" ", "")
 number_of_threads = 12
@@ -153,6 +186,8 @@ retry_error = []
 q = queue.Queue()
 page_q = queue.Queue()
 link_list = []
+url_error = []
+content_type_error = []
 
 for opt in sys.argv[1:]:
     if opt == "-help":
@@ -268,7 +303,7 @@ if len(retry_error) > 0:
     print("\nInterrupted downloads:")
     for x in retry_error:
         print(x["url"])
-    while 1:
+    for _ in range(999):
         yes_no = input("%s download%s %s interrupted, do you want to try download %s again? Y/n\n" %
         (len(retry_error),
         "s" if len(retry_error) > 1 else "",
@@ -281,14 +316,13 @@ if len(retry_error) > 0:
             break
         elif yes_no.lower() == "n" or yes_no.lower() == "no":
             for x in retry_error:
-                y = "%s - page %s" % (x["url"], x["page"])
-                img_error.append(y)
+                img_error.append(x["url"], "- page", x["page"])
             break
         else:
             print("Not a valid input.\n")
 
     if q.qsize() > 0:
-        print("\nStarting download:")
+        print("Starting download:")
         backup_thread = threading.Thread(target=saver, daemon=True)
         backup_thread.start()
         backup_thread.join()
@@ -322,9 +356,24 @@ if len(page_error) > 0:
         print(x)
 if len(img_error) > 0:
     print(
-    "\n%s image%s did not load." % (
+    "\n%s image%s could not load or %s skipped." % (
     len(img_error),
     "s" if len(img_error) > 1 else "",
+    "were" if len(img_error) > 1 else "was",
     ))
     for x in img_error:
+        print(x)
+if len(url_error) > 0:
+    print(
+    "\nCould not open following URL%s:" % (
+    "s" if len(url_error) > 1 else "",
+    ))
+    for x in url_error:
+        print(x)
+if len(content_type_error) > 0:
+    print(
+    "\nThe following URL%s were not a jpg, png or gif format and did not save." % (
+    "s" if len(content_type_error) > 1 else "",
+    ))
+    for x in content_type_error:
         print(x)
