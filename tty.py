@@ -53,63 +53,63 @@ def saver():
         else:
             file_name = file_name.split('"')[1]
             file_name = urllib.request.url2pathname(file_name)
-            if data["date"] == None:
-                data["date"] = "No Title"
-            if organize == True:
-                no_good_chars = '\/:*?"<>|.'
-                folder_name = data["date"]
-                for char in no_good_chars:
-                    folder_name = folder_name.replace(char, "")
-                img_path = os.path.join(folder_name.strip(), file_name.strip())
-                if not os.path.exists(folder_name):
-                    os.makedirs(folder_name)
-            else:
-                img_path = file_name.strip()
-            while True:
-                if not os.path.exists(img_path):
-                    print(i)
-                    try:
-                        temp_file = img.read()
-                    except:
-                        if data["retry"] == True:
-                            data["retry"] = False
-                            q.put(data)
-                        else:
-                            retry_error.append(data)
+        if data["date"] == None:
+            data["date"] = "No Title"
+        if organize == True:
+            no_good_chars = '\/:*?"<>|.'
+            folder_name = data["date"]
+            for char in no_good_chars:
+                folder_name = folder_name.replace(char, "")
+            img_path = os.path.join(folder_name.strip(), file_name.strip())
+            if not os.path.exists(folder_name):
+                os.makedirs(folder_name)
+        else:
+            img_path = file_name.strip()
+        while True:
+            if not os.path.exists(img_path):
+                print(i)
+                try:
+                    temp_file = img.read()
+                except:
+                    if data["retry"] == True:
+                        data["retry"] = False
+                        q.put(data)
                     else:
-                        img_link = open(img_path, "wb")
-                        img_link.write(temp_file)
-                        img_link.close()
-                        imgs_downloaded += 1
-                    break
+                        retry_error.append(data)
                 else:
-                    nonlocal_img = img.info()["Content-Length"]
-                    with open(img_path, "rb") as f:
-                        local_img = len(f.read())
-                        f.close()
-                    if int(nonlocal_img) != int(local_img):
-                        s_types = [".jpg", ".jpeg", ".png", ".gif"]
-                        n_nmbr = file_name[file_name.rfind("(")+1:file_name.rfind(")")]
-                        if n_nmbr.isdigit() and file_name[file_name.rfind(")")+1:] in s_types:
-                            file_nmbr = int(n_nmbr) + 1
-                            split_what = " "
-                        else:
-                            file_nmbr = 2
-                            split_what = "."
-                        if content_type == "image/jpeg":
-                            file_name = file_name.rsplit(split_what, 1)[0]
-                            file_name = file_name + " (" + str(file_nmbr) + ")" + ".jpg"
-                        elif content_type == "image/png":
-                            file_name = file_name.rsplit(split_what, 1)[0]
-                            file_name = file_name + " (" + str(file_nmbr)  + ")" + ".png"
-                        elif content_type == "image/gif":
-                            file_name = file_name.rsplit(split_what, 1)[0]
-                            file_name = file_name + " (" + str(file_nmbr)  + ")" + ".gif"
-                        if organize == True:
-                            img_path = os.path.join(folder_name.strip(), file_name.strip())
+                    img_link = open(img_path, "wb")
+                    img_link.write(temp_file)
+                    img_link.close()
+                    imgs_downloaded += 1
+                break
+            else:
+                nonlocal_img = img.info()["Content-Length"]
+                with open(img_path, "rb") as f:
+                    local_img = len(f.read())
+                    f.close()
+                if int(nonlocal_img) != int(local_img):
+                    s_types = [".jpg", ".jpeg", ".png", ".gif"]
+                    n_nmbr = file_name[file_name.rfind("(")+1:file_name.rfind(")")]
+                    if n_nmbr.isdigit() and file_name[file_name.rfind(")")+1:] in s_types:
+                        file_nmbr = int(n_nmbr) + 1
+                        split_what = " "
                     else:
-                        same_file_length += 1
-                        break
+                        file_nmbr = 2
+                        split_what = "."
+                    if content_type == "image/jpeg":
+                        file_name = file_name.rsplit(split_what, 1)[0]
+                        file_name = file_name + " (" + str(file_nmbr) + ")" + ".jpg"
+                    elif content_type == "image/png":
+                        file_name = file_name.rsplit(split_what, 1)[0]
+                        file_name = file_name + " (" + str(file_nmbr)  + ")" + ".png"
+                    elif content_type == "image/gif":
+                        file_name = file_name.rsplit(split_what, 1)[0]
+                        file_name = file_name + " (" + str(file_nmbr)  + ")" + ".gif"
+                    if organize == True:
+                        img_path = os.path.join(folder_name.strip(), file_name.strip())
+                else:
+                    same_file_length += 1
+                    break
 
 class ImgLinks(HTMLParser):
     def __init__(self):
