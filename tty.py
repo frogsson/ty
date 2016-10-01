@@ -8,11 +8,11 @@ def get_source(url):
             html = u.read()
             return html
     except urllib.error.HTTPError:
-        print("HTTP Error 404: Not Found:", url)
+        print(url, "HTTP Error 404: Not Found")
         page_error.append(url)
 
 def saver():
-    global pics_downloaded
+    global imgs_downloaded
     global same_file_length
     while q.qsize() > 0:
         data = q.get()
@@ -24,41 +24,53 @@ def saver():
             i = "http://" + i
         try:
             img = urllib.request.urlopen(i)
+            content_type = img.info()["Content-Type"]
         except urllib.error.HTTPError:
-            print("HTTP Error 404: Not Found:", i)
+            print(i, "HTTP Error 404: Not Found")
             img_error.append("%s - page %s" % (i, data["page"]))
-        else:
-            if img.info()["Content-Type"] == "image/gif":
+            break
+        except:
+            if data["retry"] == True:
+                data["retry"] = False
+                q.put(data)
                 break
-            file_name = img.info()["Content-Disposition"]
-            if file_name == None:
-                o = urllib.request.url2pathname(i)
-                file_name = o.split("/")[-1]
-                if img.info()["Content-Type"] == "image/jpeg":
-                    file_name = file_name + ".jpg"
-                elif img.info()["Content-Type"] == "image/png":
-                    file_name = file_name + ".png"
             else:
-                file_name = file_name.split('"')[1]
-                file_name = urllib.request.url2pathname(file_name)
+                retry_error.append(data)
+                break
+        types = ["image/jpeg", "imgage/png", "image/gif"]
+        if content_type not in types:
+            break
+        file_name = img.info()["Content-Disposition"]
+        if file_name == None:
+            i = urllib.request.url2pathname(i)
+            file_name = i.split("/")[-1]
+            if content_type == "image/jpeg":
+                file_name = file_name + ".jpg"
+            elif content_type == "image/png":
+                file_name = file_name + ".png"
+            elif content_type == "image/gif":
+                file_name = file_name + ".gif"
+        else:
+            file_name = file_name.split('"')[1]
+            file_name = urllib.request.url2pathname(file_name)
             if data["date"] == None:
                 data["date"] = "No Title"
             if organize == True:
-                no_good_letters = '\/:*?"<>|.'
+                no_good_chars = '\/:*?"<>|.'
                 folder_name = data["date"]
-                for char in no_good_letters:
+                for char in no_good_chars:
                     folder_name = folder_name.replace(char, "")
-                img_path = os.path.join(folder_name, file_name)
+                img_path = os.path.join(folder_name.strip(), file_name.strip())
                 if not os.path.exists(folder_name):
                     os.makedirs(folder_name)
             else:
-                img_path = file_name
+                img_path = file_name.strip()
             while True:
                 if not os.path.exists(img_path):
-                    print("%s" % (i))
+                    print(i)
                     try:
                         temp_file = img.read()
-                    except http.client.IncompleteRead:
+                    except:
                         if data["retry"] == True:
                             data["retry"] = False
                             q.put(data)
@@ -68,8 +80,7 @@ def saver():
                         img_link = open(img_path, "wb")
                         img_link.write(temp_file)
                         img_link.close()
-                        pics_downloaded += 1
-
+                        imgs_downloaded += 1
                     break
                 else:
                     nonlocal_img = img.info()["Content-Length"]
@@ -77,19 +88,30 @@ def saver():
                         local_img = len(f.read())
                         f.close()
                     if int(nonlocal_img) != int(local_img):
-                        if img.info()["Content-Type"] == "image/jpeg":
-                            file_name = file_name.split(".jpg")[0]
-                            file_name = file_name + "I" + ".jpg"
-                        elif img.info()["Content-Type"] == "image/png":
-                            file_name = file_name.split(".png")[0]
-                            file_name = file_name + "I" + ".png"
+                        s_types = [".jpg", ".jpeg", ".png", ".gif"]
+                        n_nmbr = file_name[file_name.rfind("(")+1:file_name.rfind(")")]
+                        if n_nmbr.isdigit() and file_name[file_name.rfind(")")+1:] in s_types:
+                            file_nmbr = int(n_nmbr) + 1
+                            split_what = " "
+                        else:
+                            file_nmbr = 2
+                            split_what = "."
+                        if content_type == "image/jpeg":
+                            file_name = file_name.rsplit(split_what, 1)[0]
+                            file_name = file_name + " (" + str(file_nmbr) + ")" + ".jpg"
+                        elif content_type == "image/png":
+                            file_name = file_name.rsplit(split_what, 1)[0]
+                            file_name = file_name + " (" + str(file_nmbr)  + ")" + ".png"
+                        elif content_type == "image/gif":
+                            file_name = file_name.rsplit(split_what, 1)[0]
+                            file_name = file_name + " (" + str(file_nmbr)  + ")" + ".gif"
                         if organize == True:
-                            img_path = os.path.join(folder_name, file_name)
+                            img_path = os.path.join(folder_name.strip(), file_name.strip())
                     else:
                         same_file_length += 1
                         break
 
-class PicLinks(HTMLParser):
+class ImgLinks(HTMLParser):
     def __init__(self):
         HTMLParser.__init__(self)
         self.title_check = False
@@ -124,7 +146,7 @@ number_of_pages = []
 multiple_pages = False
 organize = False
 same_file_length = 0
-pics_downloaded = 0
+imgs_downloaded = 0
 img_error = []
 page_error = []
 retry_error = []
@@ -197,7 +219,7 @@ def work_page():
         print("%s" % multi_url)
         html = get_source(multi_url)
         if html != None:
-            parser = PicLinks()
+            parser = ImgLinks()
             parser.feed(html.decode("utf-8"))
             for x in parser.parsed_list:
                 x["page"] = page_nmbr
@@ -221,7 +243,7 @@ else:
     print("Fetching page source...")
     html = get_source(url)
     if html != None:
-        parser = PicLinks()
+        parser = ImgLinks()
         parser.feed(html.decode("utf-8"))
         for x in parser.parsed_list:
             x["page"] = url.split("/")[-1]
@@ -278,7 +300,7 @@ msg_total = (
 ))
 msg_dl = (
 " %s saved%s" %
-(pics_downloaded,
+(imgs_downloaded,
 "." if same_file_length <= 0 else ",",
 ))
 msg_length = (
@@ -287,7 +309,7 @@ msg_length = (
 ))
 print("Done!%s%s%s" % (
 msg_total if total_found > 0 else " Scraper could not find any images.",
-msg_dl if pics_downloaded > 0 else "",
+msg_dl if imgs_downloaded > 0 else "",
 msg_length if same_file_length > 0 else "",
 ))
 if len(page_error) > 0:
