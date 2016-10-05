@@ -45,7 +45,7 @@ def saver():
                 retry_error.append(data)
                 break
 
-        #filters files under 10kb
+        #filters out files under 10kb
         if int(img.info()["Content-Length"]) < 10000:
             total_found -= 1
             break
