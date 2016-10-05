@@ -18,11 +18,12 @@ def saver():
     while q.qsize() > 0:
         data = q.get()
         i = data["url"]
+        print(i)
+        break
         if "=" in i and "tistory.com" in i:
             i = urllib.request.url2pathname(i)
             i = i.split("=")[-1]
         if "http" not in i:
-            print(i)
             i = i.strip("/")
             i = "http://" + i
         try:
@@ -82,8 +83,7 @@ def saver():
                 file_name = file_name + ".png"
             elif content_type == "image/gif":
                 file_name = file_name + ".gif"
-
-        if data["date"] == None:
+        if data["date"] == "":
             data["date"] = "No Title"
         if organize == True:
             no_good_chars = '\/:*?"<>|.'
@@ -147,6 +147,7 @@ class ImgLinks(HTMLParser):
         self.title_check = False
         self.title = ""
         self.title_dict = {}
+        self.title_dict["retry"] = True
         self.parsed_list = []
 
     def handle_starttag(self, tag, attrs):
@@ -169,9 +170,16 @@ class ImgLinks(HTMLParser):
                     if "daumcdn.net" not in value or "tistory.com" in value:
                         self.title_dict["date"] = self.title
                         self.title_dict["url"] = l
-                        self.title_dict["retry"] = True
                         if self.title_dict not in self.parsed_list:
                             self.parsed_list.append(self.title_dict.copy())
+        # Imgur
+        if tag == "a":
+            for name, value in attrs:
+                if ".jpg" in value and "imgur" in value:
+                    print(value)
+                    self.title_dict["url"] = value
+                    if self.title_dict not in self.parsed_list:
+                        self.parsed_list.append(self.title_dict.copy())
 
 url = sys.argv[1].replace(" ", "")
 number_of_threads = 12
@@ -328,52 +336,52 @@ if len(retry_error) > 0:
         backup_thread.join()
 
 msg_total = (
-" Scraper found %s image%s." %
-(total_found,
-"s" if total_found > 1 else "",
-))
+    " Scraper found %s image%s." %
+    (total_found,
+    "s" if total_found > 1 else "",
+    ))
 msg_dl = (
-" %s saved%s" %
-(imgs_downloaded,
-"." if same_file_length <= 0 else ",",
-))
+    " %s saved%s" %
+    (imgs_downloaded,
+    "." if same_file_length <= 0 else ",",
+    ))
 msg_length = (
-" %s already existed and did not save." %
-(same_file_length,
-))
+    " %s already existed and did not save." %
+    (same_file_length,
+    ))
 print("Done!%s%s%s" % (
-msg_total if total_found > 0 else " Scraper could not find any images.",
-msg_dl if imgs_downloaded > 0 else "",
-msg_length if same_file_length > 0 else "",
-))
+    msg_total if total_found > 0 else " Scraper could not find any images.",
+    msg_dl if imgs_downloaded > 0 else "",
+    msg_length if same_file_length > 0 else "",
+    ))
 if len(page_error) > 0:
     print(
-    "\n%s page%s did not load." % (
-    len(page_error),
-    "s" if len(page_error) > 1 else "",
-    ))
+        "\n%s page%s did not load." % (
+        len(page_error),
+        "s" if len(page_error) > 1 else "",
+        ))
     for x in page_error:
         print(x)
 if len(img_error) > 0:
     print(
-    "\n%s image%s could not load or %s skipped." % (
-    len(img_error),
-    "s" if len(img_error) > 1 else "",
-    "were" if len(img_error) > 1 else "was",
-    ))
+        "\n%s image%s could not load or %s skipped." % (
+        len(img_error),
+        "s" if len(img_error) > 1 else "",
+        "were" if len(img_error) > 1 else "was",
+        ))
     for x in img_error:
         print(x)
 if len(url_error) > 0:
     print(
-    "\nCould not open following URL%s:" % (
-    "s" if len(url_error) > 1 else "",
-    ))
+        "\nCould not open following URL%s:" % (
+        "s" if len(url_error) > 1 else "",
+        ))
     for x in url_error:
         print(x)
 if len(content_type_error) > 0:
     print(
-    "\nThe following URL%s were not a jpg, png or gif format and did not save." % (
-    "s" if len(content_type_error) > 1 else "",
-    ))
+        "\nThe following URL%s were not a jpg, png or gif format and did not save." % (
+        "s" if len(content_type_error) > 1 else "",
+        ))
     for x in content_type_error:
         print(x)
