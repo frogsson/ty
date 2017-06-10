@@ -1,13 +1,13 @@
+from html.parser import HTMLParser
 import urllib.request
 import urllib.parse
-import sys
-import queue
 import threading
+import queue
 import time
-import os
 import http
 import json
-from html.parser import HTMLParser
+import sys
+import os
 
 
 def unknown_url_type(error):
