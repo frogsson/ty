@@ -1,13 +1,13 @@
-from html.parser import HTMLParser
 import urllib.request
 import urllib.parse
-import threading
+import sys
 import queue
+import threading
 import time
+import os
 import http
 import json
-import sys
-import os
+from html.parser import HTMLParser
 
 
 def unknown_url_type(error):
@@ -33,6 +33,7 @@ def saver():
     while q.qsize() > 0:
         data = q.get()
         i = data["url"]
+        print(i)
         if "=" in i and "tistory.com" in i:
             i = urllib.request.url2pathname(i)
             i = i.split("=")[-1]
@@ -45,31 +46,31 @@ def saver():
         except urllib.error.HTTPError:
             print(i, "HTTP Error 404: Not Found")
             img_error.append("%s - page %s" % (i, data["page"]))
-            break
+            continue
         except urllib.error.URLError:
             url_error.append(i)
-            break
+            continue
         except:
             if data["retry"] == True:
                 data["retry"] = False
                 q.put(data)
-                break
+                continue
             else:
                 retry_error.append(data)
-                break
+                continue
 
         #filters out files under 10kb
         if img.info()["Content-Length"].isdigit():
             if int(img.info()["Content-Length"]) < 10000:
                 total_found -= 1
-                break
+                continue
 
         #filters out non jpg/gif/png
         types = ["image/jpeg", "image/png", "image/gif"]
         s_types = [".jpg", ".jpeg", ".png", ".gif"]
         if content_type not in types:
             content_type_error.append(i, "- page", data["page"])
-            break
+            continue
 
         file_name = img.info()["Content-Disposition"]
         if file_name == None:
@@ -90,7 +91,7 @@ def saver():
             else:
                 file_name = file_name.split('"')[1]
             file_name = urllib.request.url2pathname(file_name)
-        file_extension = False # makes sure filename has extension 
+        file_extension = False # makes sure filename has extension (this whole section is fucking stupid, no idea why i did it like this)
         jpeg_replaced = file_name.replace("jpeg", "jpg")
         for s_type in s_types:
             if s_type in jpeg_replaced[-4:]:
@@ -137,7 +138,7 @@ def saver():
                     local_img = len(f.read())
                     f.close()
                 if int(nonlocal_img) != int(local_img):
-                    s_types = [".jpg", ".jpeg", ".png", ".gif"]
+                    s_types = [".jpg", ".jpeg", ".png", ".gif"] # why did i redefine this variable?
                     n_nmbr = file_name[file_name.rfind("(")+1:file_name.rfind(")")]
                     if n_nmbr.isdigit() and file_name[file_name.rfind(")")+1:].lower() in s_types:
                         file_nmbr = int(n_nmbr) + 1
@@ -156,6 +157,8 @@ def saver():
                         file_name = file_name + " (" + str(file_nmbr)  + ")" + ".gif"
                     if organize == True:
                         img_path = os.path.join(folder_name.strip(), file_name.strip())
+                    else:
+                        img_path = file_name
                 else:
                     same_file_length += 1
                     break
@@ -195,7 +198,7 @@ class ImgLinks(HTMLParser):
                     l = value
                     if "tistory.com" in value:
                         l = value.replace("image", "original")
-                    if "daumcdn.net" not in value or "tistory.com" in value:
+                    if "daumcdn.net" not in value: # or "tistory.com" in value: -- testing
                         self.title_dict["date"] = self.title
                         self.title_dict["url"] = l
                         if self.title_dict not in self.parsed_list:
@@ -328,10 +331,13 @@ else:
             link_list.append(x)
     else:
         sys.exit()
+
 for x in link_list:
     q.put(x)
+
 if int(number_of_threads) > q.qsize():
     number_of_threads = q.qsize()
+
 total_found = q.qsize()
 print("\nStarting download:")
 
