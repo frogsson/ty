@@ -1,8 +1,9 @@
 from bs4 import BeautifulSoup
 import urllib.request # replace with request
 import urllib.parse # might replace with request
+import threading 
 import queue
-import threading import time
+import time
 import http # not sure what this is for yet
 import json # might replace with request
 import sys
@@ -10,27 +11,187 @@ import os
 
 
 def main(args):
+    # Collects argument data -- might change this with argparse module
     ArgData.url = args[1]
     ArgData.url = format_url(ArgData.url)
-    #get_source(ArgData.url, True) # url check
-    #ArgData.url = "http://sinbru.tistory.com/36"
+    #get_data(ArgData.url, True) # checks if url is valid - fix this later
     argument_flags(args)
+
+    # Collects image links from given arguments
     if ArgData.multiple_pages:
         multiple_pages()
     else:
         single_page()
-    print(URLData.q.qsize())
-    while URLData.q.qsize() > 0:
-        i = URLData.q.get()
-        print(i)
+
+    Error.total_img_found = URLData.q.qsize()
+
+    lock = threading.Lock()
+    # Starts the download
+    print("\nStarting download:")
+    while True:
+        img_threads = [
+                threading.Thread(target=DL, daemon=True)
+                for i in range(int(ArgData.number_of_threads))
+                ]
+        for thread in img_threads:
+            thread.start()
+            time.sleep(0.1)
+        for thread in img_threads:
+            thread.join()
+
+        # retry slow mode
+        if len(Error.retry_error) > 0:
+            ArgData.number_of_threads = 1
+            Error.retry_error.clear()
+        else:
+            break # breaks if done
+
+
+    #final report
+
 
 class ArgData:
     organize = False
     multiple_pages = False
     number_of_threads = 6
+    lock = threading.Lock()
 
-class error:
-    page_http = 0
+# page_error - pages did not load
+# img_error - images could not load or was skipped
+# url_error - could not open following URLS
+# content_type_error - Following urls were not a jpg, png or gif format and did not save
+
+class Error:                # shared thread variables
+    tota_img_found = 0      # not an error but I'll put it here for now for final report
+    imgs_downloaded = 0
+
+    HTTP404_error = []
+    img_error = []     # img_error on old tty
+    url_error = []
+    retry_error = []
+    value_error = []
+
+    already_found = 0
+
+def DL():
+    while URLData.q.qsize() > 0:
+        data = URLData.q.get()
+        #print(data)
+        url = data["url"]
+        page = " - page " + data["page"] if data["page"] != None else ""
+
+        # corrects the url for some cases
+        # might improve with urllib.parse
+        url = special_case_of_tistory_formatting(url) 
+
+        # returns image headers in a dictionary, or None if error
+        img_info = fetch_img_variables(url, data, page) 
+        if img_info is None:
+            continue
+
+        # filter out files under 10kb
+        # will skip file if it can't find content-length
+        # it should always find it, so if it can't something is wrong
+        if (img_info["Content-Length"].isdigit() and
+            int(img_info["Content-Length"]) < 10000):
+            Error.total_img_found -= 1
+            continue
+        elif img_info["Content-Length"] is None:
+            print("Could not find Content-Length header for: ", url)
+            Error.img_error.append("%s%s" % (url, page))
+            continue
+
+        #filters out non jpg/gif/png
+        types = ["image/jpeg", "image/png", "image/gif"]
+        if img_info["Content-Type"] not in types:
+            content_type_error.append("%s%s" % (url, page))
+            continue
+
+        print(url)
+        mem_file = get_data(url)
+        with ArgData.lock:
+            img_path = get_img_path(url, img_info)
+            if img_path != None:
+                print("saving:", img_path)
+                img_file = open(img_path, "wb")
+                img_file.write(mem_file)
+                img_file.close()
+                Error.imgs_downloaded += 1
+            else:
+                print("it's none")
+                Error.already_found += 1
+
+def get_img_path(url, img_info):
+    s_types = [".jpg", ".jpeg", ".png", ".gif"]
+    file_name = img_info["Content-Disposition"]
+    if file_name == None:
+        file_name = url.split("/")[-1]
+        for s_type in s_types:
+            if file_name.endswith(s_type):
+                file_name = file_name.rsplit["."][0]
+    else:
+        if "filename*=UTF-8" in file_name:
+            file_name = file_name.split("filename*=UTF-8''")[1]
+            file_name = file_name.rsplit(".", 1)[0]
+        else:
+            file_name = file_name.split('"')[1]
+        file_name = urllib.request.url2pathname(file_name)
+    extension = "." + img_info["Content-Type"].split("/")[1]
+    extension = extension.replace("jpeg", "jpg")
+    file_name = file_name + extension
+    if ArgData.organize:
+        if data["date"] == "":
+            data["data"] = "Untitled"
+        no_good_chars = '\/:*?"<>|.'
+        folder_name = data["date"]
+        for char in no_good_chars:
+            folder_name = folder_name.replace(char, "")
+            file_name = file_name.replace(char, "")
+        img_path = os.path.join(folder_name.strip(), file_name.strip())
+        if not os.path.exists(folder_name):
+            os.makedirs(folder_name)
+    else:
+        img_path = file_name.strip()
+
+    for _ in range(999):
+        if not os.path.exists(img_path):
+            return img_path
+        else:
+            if int(img_info["Content-Length"]) != int(len(open(img_path, "rb").read())):
+                number = file_name[file_name.rfind("(")+1:file_name.rfind(")")]
+                if number.isdigit and file_name[file_name.rfind(")")+1:].lower() in s_types:
+                    file_number = int(number) + 1
+                    file_name = file_name.rsplit("(", 1)[0].strip()
+                else:
+                    file_number = 2
+                    file_name = file_name.rsplit(".", 1)[0]
+                file_name = file_name.strip() + " (" + str(file_number) + ")" + extension
+                if ArgData.organize:
+                    img_path = os.path.join(folder_name.strip(), file_name.strip())
+                else:
+                    img_path = file_name.strip()
+            else:
+                return None
+
+
+
+def fetch_img_variables(url, data, page):
+    try:
+        img = urllib.request.urlopen(url)
+        img_info = img.info()
+    except urllib.error.HTTPError:
+        print(url, "HTTP Error 404: Not Found")
+        Error.img_error.append("%s%s" % (url, page))
+    except urllib.error.URLError:
+        url_error.append(url)
+    except:
+        if data["retry"] == True:
+            data["retry"] = False
+            URLData.q.put(data)
+        else:
+            Error.retry_error.append(data)
+    else:
+        return img_info
 
 def help_message():
     print(
@@ -67,25 +228,27 @@ def format_url(url):
         url = "http://" + url
     return url      # http://idol-grapher.tistory.com/
 
-def get_source(url, valid_url_check):
+def special_case_of_tistory_formatting(url):
+    if "=" in url and "tistory.com" in url:
+        url = urllib.request.url2pathname(url)
+        url = url.split("=")[-1]
+        return url
+    else:
+        return url
+
+def get_data(url):
     try:
         r = urllib.request.urlopen(url)
     except urllib.error.HTTPError:
         print(url, "HTTP Error 404: Not Found")
-        error.page_http += 1
+        Error.HTTP404_error.append(url)
     except ValueError as url_error:
-        if valid_url_check:
-            error_message(url_error)
-        else:
-            print(url_error)
+        print(url_error)
+        Error.value_error.append(url)
     else:
-        if valid_url_check:
-            r.close()
-            return None
-        else:
-            html = r.read()
-            r.close()
-            return html
+        html = r.read()
+        r.close()
+        return html
 
 def parse_pages(p_digits):
     ArgData.multiple_pages = True
@@ -142,7 +305,7 @@ def argument_flags(args):
 class URLData:
     q = queue.Queue()
     
-def parse_html(html):
+def parse_html(html, page_number):
     data = {}
     soup = BeautifulSoup(html, "html.parser")
     try:
@@ -157,6 +320,7 @@ def parse_html(html):
             data["date"] = date
             data["retry"] = True
             data["url"] = url
+            data["page"] = page_number
             URLData.q.put(data.copy())
 
 def work_page(page_q):
@@ -164,10 +328,9 @@ def work_page(page_q):
         page_number = page_q.get()
         url = ArgData.url + str(page_number)
         print(url)
-        time.sleep(1)
-        html = get_source(url, False)
+        html = get_data(url)
         if html != None:
-            parse_html(html)
+            parse_html(html, page_number)
 
 def multiple_pages():
     page_q = queue.Queue()
@@ -184,8 +347,12 @@ def multiple_pages():
         thread.join()
             
 def single_page():
-    html = get_source(ArgData.url, False)
+    print("Fetching page source...")
+    html = get_data(ArgData.url)
+    page_number = ArgData.url.rsplit("/", 1)[1]
+    if not page_number.isdigit():
+        page_number = None
     if html != None:
-        parse_html(html)
+        parse_html(html, page_number)
 
 main(sys.argv)
