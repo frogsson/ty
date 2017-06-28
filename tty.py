@@ -30,11 +30,11 @@ class E:
     url_error = []
 
 def main(args):
-    # Collects argument data
+    # Parses argument flags -- might change with argparse module
     E.url = format_url(args[1])
     argument_flags(args)
 
-    # Collects image links from given arguments
+    # Parse page urls for images
     if E.multiple_pages:
         E.number_of_pages.sort(key=int)
         for page in E.number_of_pages:
@@ -60,7 +60,7 @@ def main(args):
     print("\nStarting download:")
     start_threads(E.number_of_threads, DL)
  
-    # retry slow mode
+    # Retry in slow mode if any timeout errors
     if len(E.retry_error) > 0:
         print("\n%s image%s were interrupted, retrying in slow mode:" % (len(E.retry_error), "s" if len(E.retry_error) > 1 else ""))
         for x in E.retry_error:
