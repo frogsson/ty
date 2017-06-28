@@ -1,243 +1,233 @@
-from html.parser import HTMLParser
+from bs4 import BeautifulSoup
 import urllib.request
 import urllib.parse
 import threading
 import queue
 import time
-import http
 import json
 import sys
 import os
 
 
-def unknown_url_type(error):
-    print("")
-    print(error)
-    print("\n>tty --help (for help and more options)")
+class E:
+    number_of_threads = 6
+    multiple_pages = False
+    organize = False
 
-def get_source(url):
-    try:
-        with urllib.request.urlopen(url) as u:
-            html = u.read()
-            return html
-    except urllib.error.HTTPError:
-        print(url, "HTTP Error 404: Not Found")
-        page_error.append(url)
-    except ValueError as error:
-        unknown_url_type(error)
+    q = queue.Queue()
+    page_q = queue.Queue()
+    lock = threading.Lock()
 
-def saver():
-    global imgs_downloaded
-    global same_file_length
-    global total_found
-    while q.qsize() > 0:
-        data = q.get()
-        i = data["url"]
-        if "=" in i and "tistory.com" in i:
-            i = urllib.request.url2pathname(i)
-            i = i.split("=")[-1]
-        if "http" not in i:
-            i = i.strip("/")
-            i = "http://" + i
-        try:
-            img = urllib.request.urlopen(i)
-            content_type = img.info()["Content-Type"]
-        except urllib.error.HTTPError:
-            print(i, "HTTP Error 404: Not Found")
-            img_error.append("%s - page %s" % (i, data["page"]))
-            break
-        except urllib.error.URLError:
-            url_error.append(i)
-            break
-        except:
-            if data["retry"] == True:
-                data["retry"] = False
-                q.put(data)
-                break
-            else:
-                retry_error.append(data)
-                break
+    imgs_downloaded = 0
+    tota_img_found = 0
+    already_found = 0
 
-        #filters out files under 10kb
-        if img.info()["Content-Length"].isdigit():
-            if int(img.info()["Content-Length"]) < 10000:
-                total_found -= 1
-                break
+    content_type_error = []
+    HTTP_error = []
+    retry_error = []
+    value_error = []
+    img_error = []
+    url_error = []
 
-        #filters out non jpg/gif/png
+def main(args):
+    # Collects argument data
+    E.url = format_url(args[1])
+    argument_flags(args)
+
+    # Collects image links from given arguments
+    if E.multiple_pages:
+        E.number_of_pages.sort(key=int)
+        for page in E.number_of_pages:
+            E.page_q.put(page)
+        print("Fetching source for:")
+        E.number_of_pages.clear()
+        start_threads(4, work_page)
+    else:
+        print("Fetching page source...")
+        html = fetch(E.url)
+        page_number = E.url.rsplit("/", 1)[1]
+        if not page_number.isdigit():
+            page_number = None
+        if html is not None:
+            parse_page(html, page_number)
+        else:
+            print("could not connect")
+            sys.exit()
+    E.total_img_found = E.q.qsize()
+
+    # Starts the download
+    lock = threading.Lock()
+    print("\nStarting download:")
+    start_threads(E.number_of_threads, DL)
+ 
+    # retry slow mode
+    if len(E.retry_error) > 0:
+        print("\n%s image%s were interrupted, retrying in slow mode:" % (len(E.retry_error), "s" if len(E.retry_error) > 1 else ""))
+        for x in E.retry_error:
+            E.q.put(x)
+        start_threads(1, DL)
+
+    #final report
+    print("\nDone!")
+    print("Found:", E.total_img_found)
+    if E.imgs_downloaded > 0:
+        print("Saved:", E.imgs_downloaded)
+    if E.already_found > 0:
+        print("Already saved:", E.already_found)
+
+    if len(E.HTTP_error) > 0:
+        print("\n404 not found:")
+        [print(url) for url in E.HTTP_error]
+    if len(E.img_error) > 0:
+        print("\nCould not load:")
+        [print(url) for url in E.img_error]
+    if len(E.url_error) > 0:
+        print("\nCould not open:")
+        [print(url) for url in E.url_error]
+
+def start_threads(number_of_threads, _target):
+    img_threads = [threading.Thread(target=_target, daemon=True)
+                   for i in range(int(number_of_threads))]
+    for thread in img_threads:
+        thread.start()
+        time.sleep(0.1)
+    for thread in img_threads:
+        thread.join()
+
+def DL():
+    while E.q.qsize() > 0:
+        data = E.q.get()
+        url = data["url"]
+        date = data["date"]
+        #url_page = "{} - page {}".format(data["url"], data["page"])
+
+        # corrects the url for some cases
+        url = special_case_of_tistory_formatting(url)
+        url = format_url(url)
+
+        # returns image headers in a dictionary, or None if error
+        img_info = fetch(url, retry=data["retry"], IMG_HEADERS=True) 
+        if img_info == None:
+            continue
+        elif "_TimeoutError_" == img_info:
+            data["retry"] = False
+            E.retry_error.append(data)
+            continue
+
+        # filter out files under 10kb
+        # will skip file if it can't find content-length
+        # it should always find it, so if it can't something is wrong
+        if (img_info["Content-Length"].isdigit() and
+            int(img_info["Content-Length"]) < 10000):
+            E.total_img_found -= 1
+            continue
+
+        # filter out non jpg/gif/png
         types = ["image/jpeg", "image/png", "image/gif"]
-        s_types = [".jpg", ".jpeg", ".png", ".gif"]
-        if content_type not in types:
-            content_type_error.append(i, "- page", data["page"])
-            break
+        if img_info["Content-Type"] not in types:
+            E.total_img_found -= 1
+            continue
 
-        file_name = img.info()["Content-Disposition"]
-        if file_name == None:
-            file_name = i.split("/")[-1]
-            for s_type in s_types:
-                if s_type in file_name[-4:]:
-                    file_name = file_name.split(".")[0]
-            if content_type == "image/jpeg":
-                file_name = file_name + ".jpg"
-            elif content_type == "image/png":
-                file_name = file_name + ".png"
-            elif content_type == "image/gif":
-                file_name = file_name + ".gif"
-        else:
-            if "filename*=UTF-8" in file_name:
-                file_name = file_name.split("filename*=UTF-8''")[1]
-                file_name = file_name.split(".", 1)[0]
+        print(url)
+        mem_file = fetch(url, retry=data["retry"])
+        if mem_file == None:
+            continue
+        elif "_TimeoutError_" == mem_file:
+            data["retry"] = False
+            E.retry_error.append(data)
+            continue
+
+        with E.lock:
+            img_path = get_img_path(url, date, img_info)
+            if img_path != None:
+                img_file = open(img_path, "wb")
+                img_file.write(mem_file)
+                img_file.close()
+                E.imgs_downloaded += 1
             else:
-                file_name = file_name.split('"')[1]
-            file_name = urllib.request.url2pathname(file_name)
-        file_extension = False # makes sure filename has extension 
-        jpeg_replaced = file_name.replace("jpeg", "jpg")
+                E.already_found += 1
+
+def get_img_path(url, date, img_info):
+    s_types = [".jpg", ".jpeg", ".png", ".gif"]
+    file_name = img_info["Content-Disposition"]
+    if file_name == None:
+        file_name = url.split("/")[-1]
         for s_type in s_types:
-            if s_type in jpeg_replaced[-4:]:
-                file_extension = True
-        if file_extension == False:
-            if content_type == "image/jpeg":
-                file_name = file_name + ".jpg"
-            elif content_type == "image/png":
-                file_name = file_name + ".png"
-            elif content_type == "image/gif":
-                file_name = file_name + ".gif"
-        if data["date"] == "":
-            data["date"] = "No Title"
-        if organize == True:
-            no_good_chars = '\/:*?"<>|.'
-            folder_name = data["date"]
-            for char in no_good_chars:
-                folder_name = folder_name.replace(char, "")
-            img_path = os.path.join(folder_name.strip(), file_name.strip())
-            if not os.path.exists(folder_name):
-                os.makedirs(folder_name)
+            if file_name.endswith(s_type):
+                file_name = file_name.rsplit["."][0]
+    else:
+        if "filename*=UTF-8" in file_name:
+            file_name = file_name.split("filename*=UTF-8''")[1]
+            file_name = file_name.rsplit(".", 1)[0]
         else:
-            img_path = file_name.strip()
-        for _ in range(9999):
-            if not os.path.exists(img_path):
-                print(i)
-                try:
-                    temp_file = img.read()
-                except:
-                    if data["retry"] == True:
-                        data["retry"] = False
-                        q.put(data)
-                    else:
-                        retry_error.append(data)
+            file_name = file_name.split('"')[1]
+        file_name = urllib.request.url2pathname(file_name)
+    extension = "." + img_info["Content-Type"].split("/")[1]
+    extension = extension.replace("jpeg", "jpg")
+    file_name = file_name + extension
+    if E.organize:
+        if date == "":
+            date = "Untitled"
+        no_good_chars = '\/:*?"<>|.'
+        folder_name = date 
+        for char in no_good_chars:
+            folder_name = folder_name.replace(char, "")
+        img_path = os.path.join(folder_name.strip(), file_name.strip())
+        if not os.path.exists(folder_name):
+            os.makedirs(folder_name)
+    else:
+        img_path = file_name.strip()
+
+    for _ in range(999):
+        if not os.path.exists(img_path):
+            return img_path
+        else:
+            if int(img_info["Content-Length"]) != int(len(open(img_path, "rb").read())):
+                number = file_name[file_name.rfind("(")+1:file_name.rfind(")")]
+                if number.isdigit and file_name[file_name.rfind(")")+1:].lower() in s_types:
+                    file_number = int(number) + 1
+                    file_name = file_name.rsplit("(", 1)[0].strip()
                 else:
-                    img_link = open(img_path, "wb")
-                    img_link.write(temp_file)
-                    img_link.close()
-                    imgs_downloaded += 1
-                break
+                    file_number = 2
+                    file_name = file_name.rsplit(".", 1)[0]
+                file_name = file_name.strip() + " (" + str(file_number) + ")" + extension
+                if E.organize:
+                    img_path = os.path.join(folder_name.strip(), file_name.strip())
+                else:
+                    img_path = file_name.strip()
             else:
-                nonlocal_img = img.info()["Content-Length"]
-                with open(img_path, "rb") as f:
-                    local_img = len(f.read())
-                    f.close()
-                if int(nonlocal_img) != int(local_img):
-                    s_types = [".jpg", ".jpeg", ".png", ".gif"]
-                    n_nmbr = file_name[file_name.rfind("(")+1:file_name.rfind(")")]
-                    if n_nmbr.isdigit() and file_name[file_name.rfind(")")+1:].lower() in s_types:
-                        file_nmbr = int(n_nmbr) + 1
-                        split_what = " "
-                    else:
-                        file_nmbr = 2
-                        split_what = "."
-                    if content_type == "image/jpeg":
-                        file_name = file_name.rsplit(split_what, 1)[0]
-                        file_name = file_name + " (" + str(file_nmbr) + ")" + ".jpg"
-                    elif content_type == "image/png":
-                        file_name = file_name.rsplit(split_what, 1)[0]
-                        file_name = file_name + " (" + str(file_nmbr)  + ")" + ".png"
-                    elif content_type == "image/gif":
-                        file_name = file_name.rsplit(split_what, 1)[0]
-                        file_name = file_name + " (" + str(file_nmbr)  + ")" + ".gif"
-                    if organize == True:
-                        img_path = os.path.join(folder_name.strip(), file_name.strip())
-                else:
-                    same_file_length += 1
-                    break
+                return None
 
-class ImgLinks(HTMLParser):
-    def __init__(self):
-        HTMLParser.__init__(self)
-        self.title_check = False
-        self.title = ""
-        self.title_dict = {}
-        self.title_dict["retry"] = True
-        self.parsed_list = []
-        self.data_tag = False
+def fetch(url, IMG_HEADERS=False, retry=False):
+    try:
+        r = urllib.request.urlopen(url)
+        if IMG_HEADERS:
+            data = r.info()
+        else:
+            data = r.read()
+        return data 
+    except urllib.error.HTTPError as error:
+        print(url, error)
+        E.HTTP_error.append(url)
+    except urllib.error.URLError as error: # not a valid url
+        print(error)
+        E.url_error.append(url)
+    except ValueError as error: # missing http/https
+        print(error)
+        e.url_error.append(url)
+    except:
+        if retry:
+            return "_TimeoutError_"
+        else:
+            E.img_error.append(url)
 
-    def handle_starttag(self, tag, attrs):
-        # Tistory
-        if tag == "title":
-            self.data_tag = True
-
-        if tag == "meta":
-            for name, value in attrs:
-                if value == "og:title":
-                    self.title_check = True
-
-                if name == "content" and self.title_check == True:
-                    if value is not "":
-                        self.title = value
-                        self.title_check = False
-                    else:
-                        title_parse = html.decode("utf-8", errors="replace")
-                        title_parse = title_parse[title_parse.find("<title>")+7:title_parse.find("</title>")]
-                        self.title = title_parse
-
-        if tag == "img":
-            for name, value in attrs:
-                if name == "src":
-                    l = value
-                    if "tistory.com" in value:
-                        l = value.replace("image", "original")
-                    if "daumcdn.net" not in value or "tistory.com" in value:
-                        self.title_dict["date"] = self.title
-                        self.title_dict["url"] = l
-                        if self.title_dict not in self.parsed_list:
-                            self.parsed_list.append(self.title_dict.copy())
-
-    def handle_data(self,data):
-        if self.handle_data == True:
-            print(data)
-            self.handle_data = False
-
-if len(sys.argv) <= 1:
-    print("")
-    print("No arguments given")
-    print("")
-    print(">tty --help (for help and more options)")
-    input("\nPress Enter to continue")
-    sys.exit()
-
-url = sys.argv[1].replace(" ", "")
-number_of_threads = 6
-number_of_pages = []
-multiple_pages = False
-organize = False
-same_file_length = 0
-imgs_downloaded = 0
-img_error = []
-page_error = []
-retry_error = []
-q = queue.Queue()
-page_q = queue.Queue()
-link_list = []
-url_error = []
-content_type_error = []
-
-
-for opt in sys.argv[1:]:
-    if opt == "--help" or opt == "-h":
-        print(
-        "\n"
+def help_message():
+    print(
+        "usage: tty url\n"
         "   Download images from a tistory page\n"
         "   >tty http://idol-grapher.tistory.com/140\n\n"
-        "-p\n"
+        "optional:\n"
+        "-p, --pages\n"
         "   Download images from multiple pages\n\n"
         "   To download images from page 140 to 150\n"
         "   >tty http://idol-grapher.tistory.com/ -p 140-150\n\n"
@@ -245,186 +235,113 @@ for opt in sys.argv[1:]:
         "   >tty http://idol-grapher.tistory.com/ -p 1,2,3\n\n"
         "   To download images from page 1, 2, 3, 5 to 10 and 20 to 25\n"
         "   >tty http://idol-grapher.tistory.com/ -p 1,2,3,5-10,20-25\n\n"
-        "-t\n"
-        "   Number of simultaneous downloads (default is 6)\n"
+        "-t, --threads\n"
+        "   Number of simultaneous downloads (max is 32)\n"
         "   >tty http://idol-grapher.tistory.com/140 -t 6\n\n"
-        "-o\n"
+        "-o, --organize\n"
         "   Organize images by title (may not always work)\n"
-        "   >tty http://idol-grapher.tistory.com/140 -o\n"
-        )
-        sys.exit()
-    elif opt == "-p":
-        multiple_pages = True
-        p_num = sys.argv[sys.argv.index("-p") + 1]
-        digit_check = p_num.replace(",", " ")
-        digit_check = digit_check.replace("-", " ").split(" ")
-        for digit in digit_check:
-            if not digit.isdigit():
-                print(
-                "   -p can only accept numbers\n"
-                "   >tty http://idol-grapher.tistory.com/ -p 1,2,5-10"
-                )
-                sys.exit()
+        "   >tty http://idol-grapher.tistory.com/140 -o\n")
+    sys.exit()
 
-        p_num = p_num.split(",")
-        for num in p_num:
-            if "-" in num:
-                first_num = num.split("-")[0]
-                second_num = num.split("-")[1]
-                total_num = int(second_num) - int(first_num)
-                for new_num in range(total_num + 1):
-                    number_of_pages.append(new_num + int(first_num))
-            else:
-                number_of_pages.append(num)
+def error_message(error):
+    print(error)
+    print("\n>tty --help (for help and more options)")
+    sys.exit()
 
-    elif opt == "-t":
-        t_num = sys.argv[sys.argv.index("-t") + 1]
-        if t_num.isdigit() and int(t_num) > 0 and int(t_num) < 61:
-            number_of_threads = t_num
+def format_url(url):
+    if url.startswith("http://www."):
+        url = "http://" + url[11:]
+    elif url.startswith("www."):
+        url = "http://" + url[4:]
+    elif url.startswith("/"):
+        url = "http://" + url.strip("/")
+    return url      # http://idol-grapher.tistory.com/
+
+def special_case_of_tistory_formatting(url):
+    if "=" in url and "tistory.com" in url:
+        url = urllib.request.url2pathname(url)
+        url = url.split("=")[-1]
+        return url
+    else:
+        return url
+
+def parse_pages(p_digits):
+    E.multiple_pages = True
+    E.number_of_pages = []
+
+    digit_check = p_digits.replace(",", " ")
+    digit_check = digit_check.replace("-", " ").split(" ")
+    for digit in digit_check:
+        if not digit.isdigit():
+            digit_error = "-p only accept numbers\n" \
+                          ">tty http://idol-grapher.tistory.com/ -p 1,2,3-10"
+            error_message(digit_error)
+
+    p_digits = p_digits.split(",")
+    for digit in p_digits:
+        if "-" in digit:
+            first_digit = digit.split("-")[0]
+            second_digit = digit.split("-")[1]
+            total_digit = int(second_digit) - int(first_digit)
+            for new_digit in range(total_digit + 1):
+                E.number_of_pages.append(new_digit + int(first_digit))
         else:
-            print(
-            "   Threads(-t) needs to be a number in between 1-60\n\n"
-            "   >tty http://jjtaeng.tistory.com/244 -t 3\n"
-            )
-            sys.exit()
-    elif opt == "-o" or opt == "-organize":
-        organize = True
+            E.number_of_pages.append(int(digit))
+
+def argument_flags(args):
+    if "-h" in args or "--help" in args:
+        help_message()
+    elif "-p" in args or "--pages" in args:
+        try:
+            parse_pages(args[args.index("-p") + 1])         # make sure this is retard proof'd
+        except IndexError:
+            page_error = "-p needs an argument\n" \
+                         ">tty http://idol-grapher.tistory.com/ -p 1-5"
+            error_message(page_error)
+    elif "-t" in args or "--threads" in args:
+        try:
+            thread_num = args[args.index("-t") + 1]
+        except IndexError:
+            thread_num_error = "-t needs an argument\n" \
+                               ">tty http://idol-grapher.tistory.com/244 -t 6"
+            error_message(thread_num_error)
+        if (thread_num.isdigit() and 
+            int(thread_num) > 0 and
+            int(thread_num) < 33):
+            E.number_of_threads = int(thread_num)
+        else:
+            thread_num_error = "-t needs a number in between 1-32\n" \
+                               ">tty http://idol-grapher.tistory.com/244 -t 6"
+            error_message(thread_num_error)
+    elif "-o" in args or "--organize" in args:
+        E.organize = True
+    
+def parse_page(html, page_number):
+    data = {}
+    soup = BeautifulSoup(html, "html.parser")
+    try:
+        date = soup.find(property="og:title").get("content")
+    except AttributeError:
+        date = soup.title.string
+    for tag in soup.find_all("img"):
+        url = tag.get("src")
+        if "tistory.com" in url:
+            url = url.replace("image", "original")
+        if "daumcdn.net" not in url:
+            data["date"] = date
+            data["url"] = url
+            data["page"] = page_number
+            data["retry"] = True
+            E.q.put(data.copy())
 
 def work_page():
-    while page_q.qsize() > 0:
-        page_nmbr = page_q.get()
-        multi_url = str(url) + str(page_nmbr)
-        print(multi_url)
-        html = get_source(multi_url)
-        if html != None:
-            parser = ImgLinks()
-            parser.feed(html.decode("utf-8", errors="replace"))
-            for x in parser.parsed_list:
-                x["page"] = page_nmbr
-                link_list.append(x)
+    while E.page_q.qsize() > 0:
+        page_number = E.page_q.get()
+        url = E.url + str(page_number)
+        print(url)
+        html = fetch(url)
+        if html is not None:
+            parse_page(html, page_number)
 
-if multiple_pages == True:
-    number_of_pages.sort(key=int)
-    print("Fetching source for:")
-    if url[-1] != "/":
-        url = url + "/"
-    for page in number_of_pages:
-        page_q.put(page)
-
-    page_threads = [threading.Thread(target=work_page, daemon=True) for i in range(4)]
-    for thread in page_threads:
-        thread.start()
-        time.sleep(0.2) #LookupError:unknown encoding:idna | error I get without this
-    for thread in page_threads:
-        thread.join()
-else:
-    print("Fetching page source...")
-    html = get_source(url)
-    if html != None:
-        parser = ImgLinks()
-        parser.feed(html.decode("utf-8", errors="replace"))
-        for x in parser.parsed_list:
-            x["page"] = url.split("/")[-1]
-            link_list.append(x)
-    else:
-        sys.exit()
-for x in link_list:
-    q.put(x)
-if int(number_of_threads) > q.qsize():
-    number_of_threads = q.qsize()
-total_found = q.qsize()
-print("\nStarting download:")
-
-img_threads = [threading.Thread(target=saver, daemon=True) for i in range(int(number_of_threads))]
-for thread in img_threads:
-    thread.start()
-    time.sleep(0.1)
-for thread in img_threads:
-    thread.join()
-
-if len(retry_error) > 0:
-    print("\nInterrupted downloads:")
-    for x in retry_error:
-        print(x["url"])
-    for _ in range(999):
-        yes_no = input("%s download%s got timed out, do you want to try download %s again? Y/n\n" %
-        (len(retry_error),
-        "s" if len(retry_error) > 1 else "",
-        "them" if len(retry_error) > 1 else "it"
-        ))
-        if yes_no.lower() == "y" or yes_no.lower() == "yes" or yes_no == "":
-            for x in retry_error:
-                q.put(x)
-            break
-        elif yes_no.lower() == "n" or yes_no.lower() == "no":
-            for x in retry_error:
-                x = x["url"], "-page", x["page"]
-                img_error.append(x)
-            break
-        else:
-            print("Not a valid input.\n")
-
-    if q.qsize() > 0:
-        print("Starting download:")
-        backup_thread = threading.Thread(target=saver, daemon=True)
-        backup_thread.start()
-        backup_thread.join()
-
-# final report
-msg_total = (
-    " Scraper found %s image%s." %
-    (total_found,
-    "s" if total_found > 1 else "",
-    ))
-msg_dl = (
-    " %s saved%s" %
-    (imgs_downloaded,
-    "." if same_file_length <= 0 else ",",
-    ))
-msg_length = (
-    " %s already exists and did not save." %
-    (same_file_length,
-    ))
-
-print("Done!%s%s%s" % (
-    msg_total if total_found > 0 else " Scraper could not find any images.",
-    msg_dl if imgs_downloaded > 0 else "",
-    msg_length if same_file_length > 0 else "",
-    ))
-
-
-# error printing
-if len(page_error) > 0:
-    print(
-        "\n%s page%s did not load." % (
-        len(page_error),
-        "s" if len(page_error) > 1 else "",
-        ))
-    for x in page_error:
-        print(x)
-
-if len(img_error) > 0:
-    print(
-        "\n%s image%s could not load or %s skipped." % (
-        len(img_error),
-        "s" if len(img_error) > 1 else "",
-        "were" if len(img_error) > 1 else "was",
-        ))
-    for x in img_error:
-        print(x)
-
-if len(url_error) > 0:
-    print(
-        "\nCould not open following URL%s:" % (
-        "s" if len(url_error) > 1 else "",
-        ))
-    for x in url_error:
-        print(x)
-
-if len(content_type_error) > 0:
-    print(
-        "\nThe following URL%s were not a jpg, png or gif format and did not save." % (
-        "s" if len(content_type_error) > 1 else "",
-        ))
-    for x in content_type_error:
-        print(x)
+if __name__ == "__main__":
+    main(sys.argv)
