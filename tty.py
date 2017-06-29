@@ -11,6 +11,7 @@ import os
 
 class E:
     number_of_threads = 6
+    number_of_pages = []
     multiple_pages = False
     organize = False
 
@@ -30,9 +31,15 @@ class E:
     url_error = []
 
 def main(args):
+    if len(args) < 2:
+        print("No arguments given")
+        print("\n>tty --help (for help and more options)")
+        input("\nPress Enter to continue")
+        sys.exit()
+
     # Parses argument flags -- might change with argparse module
-    E.url = format_url(args[1])
     argument_flags(args)
+    E.url = format_url(args[1])
 
     # Parse page urls for images
     if E.multiple_pages:
@@ -51,7 +58,6 @@ def main(args):
         if html is not None:
             parse_page(html, page_number)
         else:
-            print("could not connect")
             sys.exit()
     E.total_img_found = E.q.qsize()
 
@@ -60,14 +66,14 @@ def main(args):
     print("\nStarting download:")
     start_threads(E.number_of_threads, DL)
  
-    # Retry in slow mode if any timeout errors
+    # Retry in slow mode if there was any timeout errors
     if len(E.retry_error) > 0:
-        print("\n%s image%s were interrupted, retrying in slow mode:" % (len(E.retry_error), "s" if len(E.retry_error) > 1 else ""))
+        print("\n{} image{} were interrupted, retrying in slow mode:".format(len(E.retry_error), "s" if len(E.retry_error) > 1 else "")
         for x in E.retry_error:
             E.q.put(x)
         start_threads(1, DL)
 
-    #final report
+    # Final report
     print("\nDone!")
     print("Found:", E.total_img_found)
     if E.imgs_downloaded > 0:
@@ -76,7 +82,7 @@ def main(args):
         print("Already saved:", E.already_found)
 
     if len(E.HTTP_error) > 0:
-        print("\n404 not found:")
+        print("\nHTTP error:")
         [print(url) for url in E.HTTP_error]
     if len(E.img_error) > 0:
         print("\nCould not load:")
@@ -99,14 +105,14 @@ def DL():
         data = E.q.get()
         url = data["url"]
         date = data["date"]
-        #url_page = "{} - page {}".format(data["url"], data["page"])
+        page = " -page /{}".format(data["page"])
 
-        # corrects the url for some cases
+        # Corrects the url for some cases
         url = special_case_of_tistory_formatting(url)
         url = format_url(url)
 
-        # returns image headers in a dictionary, or None if error
-        img_info = fetch(url, retry=data["retry"], IMG_HEADERS=True) 
+        # Returns image headers in a dictionary, or None if error
+        img_info = fetch(url, retry=data["retry"], img_headers=True, page=page) 
         if img_info == None:
             continue
         elif "_TimeoutError_" == img_info:
@@ -114,22 +120,20 @@ def DL():
             E.retry_error.append(data)
             continue
 
-        # filter out files under 10kb
-        # will skip file if it can't find content-length
-        # it should always find it, so if it can't something is wrong
+        # Filter out files under 10kb
         if (img_info["Content-Length"].isdigit() and
             int(img_info["Content-Length"]) < 10000):
             E.total_img_found -= 1
             continue
 
-        # filter out non jpg/gif/png
+        # Filter out non jpg/gif/png
         types = ["image/jpeg", "image/png", "image/gif"]
         if img_info["Content-Type"] not in types:
             E.total_img_found -= 1
             continue
 
         print(url)
-        mem_file = fetch(url, retry=data["retry"])
+        mem_file = fetch(url, retry=data["retry"], page=page)
         if mem_file == None:
             continue
         elif "_TimeoutError_" == mem_file:
@@ -154,7 +158,7 @@ def get_img_path(url, date, img_info):
         file_name = url.split("/")[-1]
         for s_type in s_types:
             if file_name.endswith(s_type):
-                file_name = file_name.rsplit["."][0]
+                file_name = file_name.rsplit(".", 1)[0]
     else:
         if "filename*=UTF-8" in file_name:
             file_name = file_name.split("filename*=UTF-8''")[1]
@@ -198,23 +202,32 @@ def get_img_path(url, date, img_info):
             else:
                 return None
 
-def fetch(url, IMG_HEADERS=False, retry=False):
+def fetch(url, img_headers=False, retry=False, page=None):
+    headers = {
+            "Accept": "*/*",
+            "Accept-Encoding": "gzip, deflate",
+            "Accept-Language": "en-US;q=0.6,en;q=0.4",
+            "User-Agent" : "Mozilla/5.0 (Linux; Android 6.0; Nexus 5" \
+            " Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko)" \
+            " Chrome/59.0.3071.86 Mobile Safari/537.36",
+            }
     try:
-        r = urllib.request.urlopen(url)
-        if IMG_HEADERS:
+        req = urllib.request.Request(url, headers=headers)
+        r = urllib.request.urlopen(req)
+        if img_headers:
             data = r.info()
         else:
             data = r.read()
         return data 
     except urllib.error.HTTPError as error:
         print(url, error)
-        E.HTTP_error.append(url)
-    except urllib.error.URLError as error: # not a valid url
-        print(error)
-        E.url_error.append(url)
+        E.HTTP_error.append(url + str(page) if page is not None else "")
+    except urllib.error.URLError as error: # not a valid host url
+        print(url, error)
+        E.url_error.append(url + str(page) if page is not None else "")
     except ValueError as error: # missing http/https
-        print(error)
-        e.url_error.append(url)
+        print(url, error)
+        E.url_error.append(url + str(page) if page is not None else "")
     except:
         if retry:
             return "_TimeoutError_"
@@ -223,38 +236,41 @@ def fetch(url, IMG_HEADERS=False, retry=False):
 
 def help_message():
     print(
-        "usage: tty url\n"
-        "   Download images from a tistory page\n"
-        "   >tty http://idol-grapher.tistory.com/140\n\n"
+        'usage: tty "url"\n'
+        "    Download images from a tistory page\n"
+        "    >tty http://idol-grapher.tistory.com/140\n\n"
         "optional:\n"
         "-p, --pages\n"
-        "   Download images from multiple pages\n\n"
-        "   To download images from page 140 to 150\n"
-        "   >tty http://idol-grapher.tistory.com/ -p 140-150\n\n"
-        "   To download images from page 1, 2 and 3\n"
-        "   >tty http://idol-grapher.tistory.com/ -p 1,2,3\n\n"
-        "   To download images from page 1, 2, 3, 5 to 10 and 20 to 25\n"
-        "   >tty http://idol-grapher.tistory.com/ -p 1,2,3,5-10,20-25\n\n"
+        "    Download images from multiple pages\n\n"
+        "    To download images from page 140 to 150\n"
+        "    >tty http://idol-grapher.tistory.com/ -p 140-150\n\n"
+        "    To download images from page 1, 2 and 3\n"
+        "    >tty http://idol-grapher.tistory.com/ -p 1,2,3\n\n"
+        "    To download images from page 1, 2, 3, 5 to 10 and 20 to 25\n"
+        "    >tty http://idol-grapher.tistory.com/ -p 1,2,3,5-10,20-25\n\n"
         "-t, --threads\n"
-        "   Number of simultaneous downloads (max is 32)\n"
-        "   >tty http://idol-grapher.tistory.com/140 -t 6\n\n"
+        "    Number of simultaneous downloads (max is 32)\n"
+        "    >tty http://idol-grapher.tistory.com/140 -t 6\n\n"
         "-o, --organize\n"
-        "   Organize images by title (may not always work)\n"
-        "   >tty http://idol-grapher.tistory.com/140 -o\n")
+        "    Organize images by title (may not always work)\n"
+        "    >tty http://idol-grapher.tistory.com/140 -o\n")
     sys.exit()
 
 def error_message(error):
     print(error)
-    print("\n>tty --help (for help and more options)")
+    print("\nFor help and more options:")
+    print(">tty --help")
     sys.exit()
 
 def format_url(url):
+    if url.startswith('"'):
+        url = url.strip('"')
+    if url.startswith("/"):
+        url = "http://" + url.strip("/")
     if url.startswith("http://www."):
         url = "http://" + url[11:]
     elif url.startswith("www."):
         url = "http://" + url[4:]
-    elif url.startswith("/"):
-        url = "http://" + url.strip("/")
     return url      # http://idol-grapher.tistory.com/
 
 def special_case_of_tistory_formatting(url):
@@ -265,10 +281,7 @@ def special_case_of_tistory_formatting(url):
     else:
         return url
 
-def parse_pages(p_digits):
-    E.multiple_pages = True
-    E.number_of_pages = []
-
+def split_pages(p_digits):
     digit_check = p_digits.replace(",", " ")
     digit_check = digit_check.replace("-", " ").split(" ")
     for digit in digit_check:
@@ -276,13 +289,18 @@ def parse_pages(p_digits):
             digit_error = "-p only accept numbers\n" \
                           ">tty http://idol-grapher.tistory.com/ -p 1,2,3-10"
             error_message(digit_error)
-
     p_digits = p_digits.split(",")
     for digit in p_digits:
         if "-" in digit:
             first_digit = digit.split("-")[0]
             second_digit = digit.split("-")[1]
-            total_digit = int(second_digit) - int(first_digit)
+            if int(second_digit) > int(first_digit):
+                total_digit = int(second_digit) - int(first_digit)
+            else:
+                negative_error = "{}\n" \
+                                 "Can't go from '{} to {}'\n" \
+                                 ">tty http://idol-grapher.tistory.com/ -p 1-10".format(digit, first_digit, second_digit)
+                error_message(negative_error)
             for new_digit in range(total_digit + 1):
                 E.number_of_pages.append(new_digit + int(first_digit))
         else:
@@ -291,21 +309,24 @@ def parse_pages(p_digits):
 def argument_flags(args):
     if "-h" in args or "--help" in args:
         help_message()
-    elif "-p" in args or "--pages" in args:
+    if "-p" in args or "--pages" in args:
+        E.multiple_pages = True
         try:
-            parse_pages(args[args.index("-p") + 1])         # make sure this is retard proof'd
+            split_pages(args[args.index("-p" if "-p" in args else "--pages") + 1])
         except IndexError:
-            page_error = "-p needs an argument\n" \
-                         ">tty http://idol-grapher.tistory.com/ -p 1-5"
+            page_error = "{} needs an argument\n\n" \
+                         "Example:\n" \
+                         ">tty http://idol-grapher.tistory.com/ -p 1-5".format("-p" if "-p" in args else "--pages")
             error_message(page_error)
-    elif "-t" in args or "--threads" in args:
+    if "-t" in args or "--threads" in args:
         try:
-            thread_num = args[args.index("-t") + 1]
+            thread_num = args[args.index("-t" if "-t" in args else "--threads") + 1]
         except IndexError:
-            thread_num_error = "-t needs an argument\n" \
-                               ">tty http://idol-grapher.tistory.com/244 -t 6"
+            thread_num_error = "{} needs an argument\n\n" \
+                               "Example:\n" \
+                               ">tty http://idol-grapher.tistory.com/244 -t 6".format("-t" if "-t" in args else "--threads")
             error_message(thread_num_error)
-        if (thread_num.isdigit() and 
+        if (thread_num.isdigit() and
             int(thread_num) > 0 and
             int(thread_num) < 33):
             E.number_of_threads = int(thread_num)
@@ -313,7 +334,7 @@ def argument_flags(args):
             thread_num_error = "-t needs a number in between 1-32\n" \
                                ">tty http://idol-grapher.tistory.com/244 -t 6"
             error_message(thread_num_error)
-    elif "-o" in args or "--organize" in args:
+    if "-o" in args or "--organize" in args:
         E.organize = True
     
 def parse_page(html, page_number):
@@ -325,7 +346,7 @@ def parse_page(html, page_number):
         date = soup.title.string
     for tag in soup.find_all("img"):
         url = tag.get("src")
-        if "tistory.com" in url:
+        if "tistory.com" in url and "image" in url:
             url = url.replace("image", "original")
         if "daumcdn.net" not in url:
             data["date"] = date
@@ -342,6 +363,8 @@ def work_page():
         html = fetch(url)
         if html is not None:
             parse_page(html, page_number)
+        else:
+            sys.exit()
 
 if __name__ == "__main__":
     main(sys.argv)
