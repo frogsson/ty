@@ -223,7 +223,6 @@ def fetch(url, img_headers=False, retry=False, page=""):
         E.url_error.append(url + str(page))
     except ValueError as error: # missing http/https
         print(url, error)
-        print(page)
         E.url_error.append(url + str(page))
     except:
         if retry:
