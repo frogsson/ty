@@ -19,7 +19,7 @@ class E:
     lock = threading.Lock()
 
     imgs_downloaded = 0
-    tota_img_found = 0
+    total_img_found = 0
     already_found = 0
 
     content_type_error = []
