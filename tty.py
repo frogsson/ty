@@ -731,4 +731,7 @@ def work_page():
 if __name__ == "__main__":
     main(sys.argv)
 
+<<<<<<< HEAD
+>>>>>>> c10caeae8986ccc380b6df8ebed99557e4b899b6
+=======
 >>>>>>> c10caeae8986ccc380b6df8ebed99557e4b899b6
