@@ -4,7 +4,6 @@ import urllib.parse
 import threading
 import queue
 import time
-import json
 import sys
 import os
 
@@ -68,7 +67,7 @@ def main(args):
  
     # Retry in slow mode if there was any timeout errors
     if len(E.retry_error) > 0:
-        print("\n{} image{} were interrupted, retrying in slow mode:".format(len(E.retry_error), "s" if len(E.retry_error) > 1 else "")
+        print("\n{} image{} were interrupted, retrying in slow mode:".format(len(E.retry_error), "s" if len(E.retry_error) > 1 else ""))
         for x in E.retry_error:
             E.q.put(x)
         start_threads(1, DL)
@@ -105,7 +104,7 @@ def DL():
         data = E.q.get()
         url = data["url"]
         date = data["date"]
-        page = " -page /{}".format(data["page"])
+        page = " -page /{}".format(data["page"]) if data["page"] is not None else ""
 
         # Corrects the url for some cases
         url = special_case_of_tistory_formatting(url)
@@ -202,11 +201,8 @@ def get_img_path(url, date, img_info):
             else:
                 return None
 
-def fetch(url, img_headers=False, retry=False, page=None):
+def fetch(url, img_headers=False, retry=False, page=""):
     headers = {
-            "Accept": "*/*",
-            "Accept-Encoding": "gzip, deflate",
-            "Accept-Language": "en-US;q=0.6,en;q=0.4",
             "User-Agent" : "Mozilla/5.0 (Linux; Android 6.0; Nexus 5" \
             " Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko)" \
             " Chrome/59.0.3071.86 Mobile Safari/537.36",
@@ -221,13 +217,13 @@ def fetch(url, img_headers=False, retry=False, page=None):
         return data 
     except urllib.error.HTTPError as error:
         print(url, error)
-        E.HTTP_error.append(url + str(page) if page is not None else "")
+        E.HTTP_error.append(url + str(page))
     except urllib.error.URLError as error: # not a valid host url
         print(url, error)
-        E.url_error.append(url + str(page) if page is not None else "")
+        E.url_error.append(url + str(page))
     except ValueError as error: # missing http/https
         print(url, error)
-        E.url_error.append(url + str(page) if page is not None else "")
+        E.url_error.append(url + str(page))
     except:
         if retry:
             return "_TimeoutError_"
@@ -253,7 +249,7 @@ def help_message():
         "    >tty http://idol-grapher.tistory.com/140 -t 6\n\n"
         "-o, --organize\n"
         "    Organize images by title (may not always work)\n"
-        "    >tty http://idol-grapher.tistory.com/140 -o\n")
+        "    >tty http://idol-grapher.tistory.com/140 -o")
     sys.exit()
 
 def error_message(error):
@@ -359,7 +355,6 @@ def work_page():
     while E.page_q.qsize() > 0:
         page_number = E.page_q.get()
         url = E.url + str(page_number)
-        print(url)
         html = fetch(url)
         if html is not None:
             parse_page(html, page_number)
