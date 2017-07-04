@@ -202,14 +202,8 @@ def get_img_path(url, date, img_info):
                 return None
 
 def fetch(url, img_headers=False, retry=False, page=""):
-    headers = {
-            "User-Agent" : "Mozilla/5.0 (Linux; Android 6.0; Nexus 5" \
-            " Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko)" \
-            " Chrome/59.0.3071.86 Mobile Safari/537.36",
-            }
     try:
-        req = urllib.request.Request(url, headers=headers)
-        r = urllib.request.urlopen(req)
+        r = urllib.request.urlopen(url)
         if img_headers:
             data = r.info()
         else:
