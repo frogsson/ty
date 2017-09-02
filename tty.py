@@ -13,6 +13,7 @@ class E:
     number_of_pages = []
     multiple_pages = False
     organize = False
+    rip_all = False
 
     q = queue.Queue()
     page_q = queue.Queue()
@@ -22,14 +23,11 @@ class E:
     total_img_found = 0
     already_found = 0
 
-    content_type_error = []
     HTTP_error = []
     retry_error = []
-    value_error = []
-    img_error = []
     url_error = []
 
-def main(args):
+def main(args): # python tty.py www.tistory.ilovegfriend.com/231
     if len(args) < 2:
         print("No arguments given")
         print("\n>tty --help (for help and more options)")
@@ -39,9 +37,21 @@ def main(args):
     # Parses argument flags -- might change with argparse module
     argument_flags(args)
     E.url = format_url(args[1])
+    E.netloc = urllib.parse.urlparse(E.url).netloc
 
-    # Parse page urls for images
-    if E.multiple_pages:
+    # Parse pages for images
+    if E.rip_all:
+        # rip all func
+        print("in rip all func")
+        parsable_links = rip_all()
+        print(parsable_links)
+        for page in parsable_links:
+            E.page_q.put(page)
+        print("\nFetching source for:")
+        start_threads(4, work_page)
+    elif E.multiple_pages:
+        if not E.url.endswith("/"):
+            E.url = E.url + "/"
         E.number_of_pages.sort(key=int)
         for page in E.number_of_pages:
             E.page_q.put(page)
@@ -67,25 +77,25 @@ def main(args):
  
     # Retry in slow mode if there was any timeout errors
     if len(E.retry_error) > 0:
-        print("\n{} image{} were interrupted, retrying in slow mode:".format(len(E.retry_error), "s" if len(E.retry_error) > 1 else ""))
+        print("\n{} image{} {} interrupted, retrying in slow mode:".format(len(E.retry_error), "s" if len(E.retry_error) > 1 else "", "was" if len(E.retry_error) < 2 else "were"))
         for x in E.retry_error:
             E.q.put(x)
         start_threads(1, DL)
 
     # Final report
+    total_error = len(E.HTTP_error) + len(E.url_error)
     print("\nDone!")
     print("Found:", E.total_img_found)
     if E.imgs_downloaded > 0:
         print("Saved:", E.imgs_downloaded)
     if E.already_found > 0:
         print("Already saved:", E.already_found)
+    if total_error > 0:
+        print("Errors:", total_error)
 
     if len(E.HTTP_error) > 0:
         print("\nHTTP error:")
         [print(url) for url in E.HTTP_error]
-    if len(E.img_error) > 0:
-        print("\nCould not load:")
-        [print(url) for url in E.img_error]
     if len(E.url_error) > 0:
         print("\nCould not open:")
         [print(url) for url in E.url_error]
@@ -99,6 +109,54 @@ def start_threads(number_of_threads, _target):
     for thread in img_threads:
         thread.join()
 
+def rip_all(): # very ugly test function
+    parsable_links = []
+    all_links = []
+    link_stack = []
+
+    link_stack.append(E.url)
+
+    while len(link_stack) > 0:
+        url = link_stack.pop(0)
+        print(url)
+        html = fetch(url)
+        soup = BeautifulSoup(html, "html.parser")
+
+        found_links = soup.find_all(src=True) + soup.find_all(href=True)
+
+        for tag in found_links:
+            if tag.get("href") is not None:
+                href = tag.get("href")
+            elif tag.get("src") is not None:
+                href = tag.get("src")
+
+            p = urllib.parse.urlparse(href).path
+            if (href is None or
+                "daumcdn.net" in href or 
+                p.startswith("/archive") or
+                p.startswith("/admin") or
+                not p.startswith("/")):
+                continue
+
+            if href not in all_links:
+                all_links.append(href)
+                print(E.netloc, href)
+                if E.netloc not in href and not href.startswith("http"):
+                    href = format_url(E.netloc + href)
+                    print("changing to: ", href)
+
+                if E.netloc in href:
+                    header = fetch(href, img_headers=True)
+                    if (header != None and 
+                        header["Content-Type"].startswith("text/html") and
+                        href not in all_links):
+                        print("added", href)
+                        all_links.append(href) # duplicate but necessary cuz inconsistencies
+                        link_stack.append(href)
+                        parsable_links.append(href)
+    print(len(parsable_links))
+    return parsable_links
+               
 def DL():
     while E.q.qsize() > 0:
         data = E.q.get()
@@ -108,7 +166,6 @@ def DL():
 
         # Corrects the url for some cases
         url = special_case_of_tistory_formatting(url)
-        url = format_url(url)
 
         # Returns image headers in a dictionary, or None if error
         img_info = fetch(url, retry=data["retry"], img_headers=True, page=page) 
@@ -205,24 +262,22 @@ def fetch(url, img_headers=False, retry=False, page=""):
     try:
         r = urllib.request.urlopen(url)
         if img_headers:
-            data = r.info()
+            return r.info()
         else:
-            data = r.read()
-        return data 
+            return r.read()
     except urllib.error.HTTPError as error:
         print(url, error)
         E.HTTP_error.append(url + str(page))
-    except urllib.error.URLError as error: # not a valid host url
-        print(url, error)
-        E.url_error.append(url + str(page))
     except ValueError as error: # missing http/https
         print(url, error)
         E.url_error.append(url + str(page))
-    except:
+    except Exception as error:
+        print(url, error)
         if retry:
             return "_TimeoutError_"
         else:
-            E.img_error.append(url)
+            print(url, error)
+            E.url_error.append(url + str(page))
 
 def help_message():
     print(
@@ -242,7 +297,7 @@ def help_message():
         "    Number of simultaneous downloads (max is 32)\n"
         "    >tty http://idol-grapher.tistory.com/140 -t 6\n\n"
         "-o, --organize\n"
-        "    Organize images by title (may not always work)\n"
+        "    Automatically organizes images in folders\n"
         "    >tty http://idol-grapher.tistory.com/140 -o")
     sys.exit()
 
@@ -253,14 +308,14 @@ def error_message(error):
     sys.exit()
 
 def format_url(url):
-    if url.startswith('"'):
+    if url.startswith('"') and url.endswith('"'):
         url = url.strip('"')
-    if url.startswith("/"):
-        url = "http://" + url.strip("/")
     if url.startswith("http://www."):
         url = "http://" + url[11:]
     elif url.startswith("www."):
         url = "http://" + url[4:]
+    elif not url.startswith("http") and not url.startswith("https"):
+        url = "http://" + url
     return url      # http://idol-grapher.tistory.com/
 
 def special_case_of_tistory_formatting(url):
@@ -297,35 +352,39 @@ def split_pages(p_digits):
             E.number_of_pages.append(int(digit))
 
 def argument_flags(args):
-    if "-h" in args or "--help" in args:
-        help_message()
-    if "-p" in args or "--pages" in args:
-        E.multiple_pages = True
-        try:
-            split_pages(args[args.index("-p" if "-p" in args else "--pages") + 1])
-        except IndexError:
-            page_error = "{} needs an argument\n\n" \
-                         "Example:\n" \
-                         ">tty http://idol-grapher.tistory.com/ -p 1-5".format("-p" if "-p" in args else "--pages")
-            error_message(page_error)
-    if "-t" in args or "--threads" in args:
-        try:
-            thread_num = args[args.index("-t" if "-t" in args else "--threads") + 1]
-        except IndexError:
-            thread_num_error = "{} needs an argument\n\n" \
-                               "Example:\n" \
-                               ">tty http://idol-grapher.tistory.com/244 -t 6".format("-t" if "-t" in args else "--threads")
-            error_message(thread_num_error)
-        if (thread_num.isdigit() and
-            int(thread_num) > 0 and
-            int(thread_num) < 33):
-            E.number_of_threads = int(thread_num)
-        else:
-            thread_num_error = "-t needs a number in between 1-32\n" \
-                               ">tty http://idol-grapher.tistory.com/244 -t 6"
-            error_message(thread_num_error)
-    if "-o" in args or "--organize" in args:
-        E.organize = True
+    for arg in args:
+        if arg == "-h" or arg == "--help":
+            help_message()
+        if arg == "-p" or arg == "--pages":
+            E.multiple_pages = True
+            try:
+                split_pages(args[args.index("-p" if "-p" in args else "--pages") + 1])
+            except IndexError:
+                page_error = "{} needs an argument\n\n" \
+                             "Example:\n" \
+                             ">tty http://idol-grapher.tistory.com/ -p 1-5".format("-p" if "-p" in args else "--pages")
+                error_message(page_error)
+        if arg == "-t" or arg == "--threads":
+            try:
+                thread_num = args[args.index("-t" if "-t" in args else "--threads") + 1]
+            except IndexError:
+                thread_num_error = "{} needs an argument\n\n" \
+                                   "Example:\n" \
+                                   ">tty http://idol-grapher.tistory.com/244 -t 6".format("-t" if "-t" in args else "--threads")
+                error_message(thread_num_error)
+            if (thread_num.isdigit() and
+                int(thread_num) > 0 and
+                int(thread_num) < 33):
+                E.number_of_threads = int(thread_num)
+            else:
+                thread_num_error = "-t needs a number in between 1-32\n" \
+                                   ">tty http://idol-grapher.tistory.com/244 -t 6"
+                error_message(thread_num_error)
+        if arg == "-o" or arg == "--organize":
+            E.organize = True
+        if arg == "-ra" or arg == "--ripall":
+            #E.rip_all = True
+            pass
     
 def parse_page(html, page_number):
     data = {}
@@ -336,6 +395,8 @@ def parse_page(html, page_number):
         date = soup.title.string
     for tag in soup.find_all("img"):
         url = tag.get("src")
+        if urllib.parse.urlparse(url).netloc == "" or url is None:
+            continue
         if "tistory.com" in url and "image" in url:
             url = url.replace("image", "original")
         if "daumcdn.net" not in url:
@@ -348,10 +409,17 @@ def parse_page(html, page_number):
 def work_page():
     while E.page_q.qsize() > 0:
         page_number = E.page_q.get()
-        url = E.url + str(page_number)
+        if E.multiple_pages:
+            url = E.url + str(page_number)
+        elif E.rip_all:
+            url = page_number
+            page_number = urllib.parse.urlparse(page_number).path
+        print(url)
         html = fetch(url)
         if html is not None:
             parse_page(html, page_number)
+        elif E.multiple_pages or E.rip_all:
+            continue
         else:
             sys.exit()
 
