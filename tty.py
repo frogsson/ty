@@ -15,7 +15,7 @@ class E:
     organize = False
     rip_all = False
 
-    q = queue.Queue()
+    pic_q = queue.Queue()
     page_q = queue.Queue()
     lock = threading.Lock()
 
@@ -68,7 +68,7 @@ def main(args): # python tty.py www.tistory.ilovegfriend.com/231
             parse_page(html, page_number)
         else:
             sys.exit()
-    E.total_img_found = E.q.qsize()
+    E.total_img_found = E.pic_q.qsize()
 
     # Starts the download
     lock = threading.Lock()
@@ -79,7 +79,7 @@ def main(args): # python tty.py www.tistory.ilovegfriend.com/231
     if len(E.retry_error) > 0:
         print("\n{} image{} {} interrupted, retrying in slow mode:".format(len(E.retry_error), "s" if len(E.retry_error) > 1 else "", "was" if len(E.retry_error) < 2 else "were"))
         for x in E.retry_error:
-            E.q.put(x)
+            E.pic_q.put(x)
         start_threads(1, DL)
 
     # Final report
@@ -158,8 +158,8 @@ def rip_all(): # very ugly test function
     return parsable_links
                
 def DL():
-    while E.q.qsize() > 0:
-        data = E.q.get()
+    while E.pic_q.qsize() > 0:
+        data = E.pic_q.get()
         url = data["url"]
         date = data["date"]
         page = " -page /{}".format(data["page"]) if data["page"] is not None else ""
@@ -404,7 +404,7 @@ def parse_page(html, page_number):
             data["url"] = url
             data["page"] = page_number
             data["retry"] = True
-            E.q.put(data.copy())
+            E.pic_q.put(data.copy())
 
 def work_page():
     while E.page_q.qsize() > 0:
@@ -418,10 +418,6 @@ def work_page():
         html = fetch(url)
         if html is not None:
             parse_page(html, page_number)
-        elif E.multiple_pages or E.rip_all:
-            continue
-        else:
-            sys.exit()
 
 if __name__ == "__main__":
     main(sys.argv)
