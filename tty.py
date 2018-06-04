@@ -313,7 +313,6 @@ def argument_flags(args):
                 split_pages(args[args.index("-p" if "-p" in args else "--pages") + 1])
             except IndexError:
                 page_error = "{} needs an argument\n\n" \
-                             "Example:\n" \
                              ">tty http://idol-grapher.tistory.com/ -p 1-5".format("-p" if "-p" in args else "--pages")
                 error_message(page_error)
         if arg == "-t" or arg == "--threads":
@@ -321,7 +320,6 @@ def argument_flags(args):
                 thread_num = args[args.index("-t" if "-t" in args else "--threads") + 1]
             except IndexError:
                 thread_num_error = "{} needs an argument\n\n" \
-                                   "Example:\n" \
                                    ">tty http://idol-grapher.tistory.com/244 -t 6".format("-t" if "-t" in args else "--threads")
                 error_message(thread_num_error)
             if (thread_num.isdigit() and
@@ -334,15 +332,13 @@ def argument_flags(args):
                 error_message(thread_num_error)
         if arg == "-o" or arg == "--organize":
             E.organize = True
-        if arg == "-ra" or arg == "--ripall":
-            #E.rip_all = True
-            pass
     
 def parse_page(html, page_number):
     data = {}
     soup = BeautifulSoup(html, "html.parser")
     try:
         date = soup.find(property="og:title").get("content")
+        print(date)
     except AttributeError:
         date = soup.title.string
     for tag in soup.find_all("img"):
