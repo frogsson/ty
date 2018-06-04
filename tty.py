@@ -108,54 +108,6 @@ def start_threads(number_of_threads, _target):
         time.sleep(0.1)
     for thread in img_threads:
         thread.join()
-
-def rip_all(): # very ugly test function
-    parsable_links = []
-    all_links = []
-    link_stack = []
-
-    link_stack.append(E.url)
-
-    while len(link_stack) > 0:
-        url = link_stack.pop(0)
-        print(url)
-        html = fetch(url)
-        soup = BeautifulSoup(html, "html.parser")
-
-        found_links = soup.find_all(src=True) + soup.find_all(href=True)
-
-        for tag in found_links:
-            if tag.get("href") is not None:
-                href = tag.get("href")
-            elif tag.get("src") is not None:
-                href = tag.get("src")
-
-            p = urllib.parse.urlparse(href).path
-            if (href is None or
-                "daumcdn.net" in href or 
-                p.startswith("/archive") or
-                p.startswith("/admin") or
-                not p.startswith("/")):
-                continue
-
-            if href not in all_links:
-                all_links.append(href)
-                print(E.netloc, href)
-                if E.netloc not in href and not href.startswith("http"):
-                    href = format_url(E.netloc + href)
-                    print("changing to: ", href)
-
-                if E.netloc in href:
-                    header = fetch(href, img_headers=True)
-                    if (header != None and 
-                        header["Content-Type"].startswith("text/html") and
-                        href not in all_links):
-                        print("added", href)
-                        all_links.append(href) # duplicate but necessary cuz inconsistencies
-                        link_stack.append(href)
-                        parsable_links.append(href)
-    print(len(parsable_links))
-    return parsable_links
                
 def DL():
     while E.pic_q.qsize() > 0:
