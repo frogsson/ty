@@ -1,4 +1,3 @@
-from bs4 import BeautifulSoup
 import urllib.request
 import urllib.parse
 import threading
@@ -6,6 +5,7 @@ import queue
 import time
 import sys
 import os
+import re
 
 
 class E:
@@ -14,6 +14,14 @@ class E:
     multiple_pages = False
     organize = False
     rip_all = False
+    testing = False
+
+    title = re.compile('content="(.+?)"')
+    title1 = re.compile('<meta.+?>')
+    title2 = re.compile('<title>(.+?)</title>')
+
+    imgtag = re.compile('<img.+?>')
+    imgurl = re.compile('src="(.+?)"')
 
     pic_q = queue.Queue()
     page_q = queue.Queue()
@@ -90,9 +98,9 @@ def main(args): # python tty.py www.tistory.ilovegfriend.com/231
         print("Saved:", E.imgs_downloaded)
     if E.already_found > 0:
         print("Already saved:", E.already_found)
+
     if total_error > 0:
         print("Errors:", total_error)
-
     if len(E.HTTP_error) > 0:
         print("\nHTTP error:")
         [print(url) for url in E.HTTP_error]
@@ -151,6 +159,8 @@ def DL():
 
         with E.lock:
             img_path = get_img_path(url, date, img_info)
+            if E.testing:
+                continue
             if img_path != None:
                 img_file = open(img_path, "wb")
                 img_file.write(mem_file)
@@ -332,27 +342,35 @@ def argument_flags(args):
                 error_message(thread_num_error)
         if arg == "-o" or arg == "--organize":
             E.organize = True
+        if arg == "--test":
+            E.testing = True
     
 def parse_page(html, page_number):
     data = {}
-    soup = BeautifulSoup(html, "html.parser")
-    try:
-        date = soup.find(property="og:title").get("content")
-        print(date)
-    except AttributeError:
-        date = soup.title.string
-    for tag in soup.find_all("img"):
-        url = tag.get("src")
-        if urllib.parse.urlparse(url).netloc == "" or url is None:
+    #soup = BeautifulSoup(html, "html.parser")
+    html = html.decode("utf-8")
+    date = None
+    for meta in E.title1.finditer(html):
+        if "og:title" in meta[0]:
+            date = E.title.search(meta[0])[1]
+    if date is None:
+        date = E.title2.search(html)[1]
+
+    for img in E.imgtag.finditer(html):
+        url = E.imgurl.search(img[0])
+        if url is not None:
+            url = url[1]
+        if (url is None or
+                "tistory_admin" in url or
+                urllib.parse.urlparse(url).netloc == ""):
             continue
-        if "tistory.com" in url and "image" in url:
-            url = url.replace("image", "original")
-        if "daumcdn.net" not in url:
-            data["date"] = date
-            data["url"] = url
-            data["page"] = page_number
-            data["retry"] = True
-            E.pic_q.put(data.copy())
+        if "tistory" in url and "daumcdn" in url: # lazy
+            url = url + "?original"
+        data["date"] = date
+        data["url"] = url
+        data["page"] = page_number
+        data["retry"] = True
+        E.pic_q.put(data.copy())
 
 def work_page():
     while E.page_q.qsize() > 0:
