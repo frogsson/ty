@@ -347,7 +347,6 @@ def argument_flags(args):
     
 def parse_page(html, page_number):
     data = {}
-    #soup = BeautifulSoup(html, "html.parser")
     html = html.decode("utf-8")
     date = None
     for meta in E.title1.finditer(html):
