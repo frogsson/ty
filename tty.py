@@ -289,9 +289,9 @@ def format_url(url):
     return url      # http://idol-grapher.tistory.com/
 
 def special_case_of_tistory_formatting(url):
-    if "=" in url and "tistory.com" in url:
+    if "fname=" in url and "tistory.com" in url:
         url = urllib.request.url2pathname(url)
-        url = url.split("=")[-1]
+        url = url.split("fname=")[-1]
         return url
     else:
         return url
@@ -390,16 +390,16 @@ def parse_page(html, page_number):
                     "tistory_admin" in url or
                     urllib.parse.urlparse(url).netloc == ""):
                 continue
-            if "tistory" in url and "cfile" in url:
+            if "tistory" in url and "cfile" in url and "/skin/" not in url:
                 if "daumcdn" in url and not url.endswith("?original"):
                     url = url + "?original"
                 else:
                     url = url.replace("/image/", "/original/")
-            data["date"] = date
-            data["url"] = url
-            data["page"] = page_number
-            data["retry"] = True
-            E.pic_q.put(data.copy())
+                data["date"] = date
+                data["url"] = url
+                data["page"] = page_number
+                data["retry"] = True
+                E.pic_q.put(data.copy())
 
 def work_page():
     while E.page_q.qsize() > 0:
