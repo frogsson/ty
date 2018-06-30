@@ -9,9 +9,11 @@ import re
 
 
 class E:
-    number_of_threads = 6
+    number_of_threads = 12
     number_of_pages = []
+    title_filter_words = []
     multiple_pages = False
+    title_filter = False
     organize = False
     rip_all = False
     testing = False
@@ -65,7 +67,7 @@ def main(args): # python tty.py www.tistory.ilovegfriend.com/231
             E.page_q.put(page)
         print("Fetching source for:")
         E.number_of_pages.clear()
-        start_threads(4, work_page)
+        start_threads(24, work_page)
     else:
         print("Fetching page source...")
         html = fetch(E.url)
@@ -243,7 +245,7 @@ def fetch(url, img_headers=False, retry=False, page=""):
 
 def help_message():
     print(
-        'usage: tty "url"\n'
+        "usage: tty \"url\"\n"
         "    Download images from a tistory page\n"
         "    >tty http://idol-grapher.tistory.com/140\n\n"
         "optional:\n"
@@ -257,10 +259,16 @@ def help_message():
         "    >tty http://idol-grapher.tistory.com/ -p 1,2,3,5-10,20-25\n\n"
         "-t, --threads\n"
         "    Number of simultaneous downloads (max is 32)\n"
-        "    >tty http://idol-grapher.tistory.com/140 -t 6\n\n"
+        "    >tty http://idol-grapher.tistory.com/140 -t 12\n\n"
         "-o, --organize\n"
         "    Automatically organizes images in folders\n"
-        "    >tty http://idol-grapher.tistory.com/140 -o")
+        "    >tty http://idol-grapher.tistory.com/140 -o\n"
+        "-f, --filter\n"
+        "    Download images only from pages where the title contains one of the words you define, multiple words split by \"/\"\n"
+        "    To download images from pages containing the words 여자친구 OR 소원 OR 은하 (translates to GFRIEND, SOWON, EUNHA)\n"
+        "    >tty http://idol-grapher.tistory.com/ -p 20-160 -f 여자친구/소원/은하 (translates to GFRIEND/SOWON)\n\n"
+        "    (Note: This only works alongside the -p argument, and most tistory pages use Korean titles so you\n"
+        "    may have to translate)")
     sys.exit()
 
 def error_message(error):
@@ -281,9 +289,9 @@ def format_url(url):
     return url      # http://idol-grapher.tistory.com/
 
 def special_case_of_tistory_formatting(url):
-    if "=" in url and "tistory.com" in url:
+    if "fname=" in url and "tistory.com" in url:
         url = urllib.request.url2pathname(url)
-        url = url.split("=")[-1]
+        url = url.split("fname=")[-1]
         return url
     else:
         return url
@@ -315,6 +323,15 @@ def split_pages(p_digits):
 
 def argument_flags(args):
     for arg in args:
+        if arg == "-f" or arg == "--filter":
+            E.title_filter = True
+            try:
+                E.title_filter_words = args[args.index("-f" if "-f" in args else "--filter") + 1].split('/')
+            except IndexError:
+                thread_title_filter_error = "{} needs an argument\n\n" \
+                                            "Example:\n" \
+                                            ">tty http://idol-grapher.tistory.com/ -p 3-19 -f GFRIEND".format("-f" if "-f" in args else "--filter")
+                error_message(thread_title_filter_error)
         if arg == "-h" or arg == "--help":
             help_message()
         if arg == "-p" or arg == "--pages":
@@ -346,6 +363,7 @@ def argument_flags(args):
             E.testing = True
     
 def parse_page(html, page_number):
+    parse = False
     data = {}
     html = html.decode("utf-8")
     date = None
@@ -355,21 +373,33 @@ def parse_page(html, page_number):
     if date is None:
         date = E.title2.search(html)[1]
 
-    for img in E.imgtag.finditer(html):
-        url = E.imgurl.search(img[0])
-        if url is not None:
-            url = url[1]
-        if (url is None or
-                "tistory_admin" in url or
-                urllib.parse.urlparse(url).netloc == ""):
-            continue
-        if "tistory" in url and "daumcdn" in url: # lazy
-            url = url + "?original"
-        data["date"] = date
-        data["url"] = url
-        data["page"] = page_number
-        data["retry"] = True
-        E.pic_q.put(data.copy())
+    if E.title_filter and date:
+        for word in E.title_filter_words:
+            if re.search('.*?{}.*?'.format(word), date, flags=re.IGNORECASE):
+                parse = True
+                break
+    else:
+        parse = True
+
+    if parse:
+        for img in E.imgtag.finditer(html):
+            url = E.imgurl.search(img[0])
+            if url is not None:
+                url = url[1]
+            if (url is None or
+                    "tistory_admin" in url or
+                    urllib.parse.urlparse(url).netloc == ""):
+                continue
+            if "tistory" in url and "cfile" in url and "/skin/" not in url:
+                if "daumcdn" in url and not url.endswith("?original"):
+                    url = url + "?original"
+                else:
+                    url = url.replace("/image/", "/original/")
+                data["date"] = date
+                data["url"] = url
+                data["page"] = page_number
+                data["retry"] = True
+                E.pic_q.put(data.copy())
 
 def work_page():
     while E.page_q.qsize() > 0:
