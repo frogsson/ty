@@ -9,13 +9,12 @@ import re
 
 
 class E:
-    number_of_threads = 12
+    number_of_threads = 6
     number_of_pages = []
     title_filter_words = []
     multiple_pages = False
     title_filter = False
     organize = False
-    rip_all = False
     testing = False
 
     title = re.compile('content="(.+?)"')
@@ -49,17 +48,11 @@ def main(args): # python tty.py www.tistory.ilovegfriend.com/231
     E.url = format_url(args[1])
     E.netloc = urllib.parse.urlparse(E.url).netloc
 
+    if E.testing:
+        print("\n{}".format(E.url))
+
     # Parse pages for images
-    if E.rip_all:
-        # rip all func
-        print("in rip all func")
-        parsable_links = rip_all()
-        print(parsable_links)
-        for page in parsable_links:
-            E.page_q.put(page)
-        print("\nFetching source for:")
-        start_threads(4, work_page)
-    elif E.multiple_pages:
+    if E.multiple_pages:
         if not E.url.endswith("/"):
             E.url = E.url + "/"
         E.number_of_pages.sort(key=int)
@@ -67,7 +60,7 @@ def main(args): # python tty.py www.tistory.ilovegfriend.com/231
             E.page_q.put(page)
         print("Fetching source for:")
         E.number_of_pages.clear()
-        start_threads(24, work_page)
+        start_threads(number_of_threads, work_page)
     else:
         print("Fetching page source...")
         html = fetch(E.url)
@@ -190,7 +183,7 @@ def get_img_path(url, date, img_info):
     extension = extension.replace("jpeg", "jpg")
     file_name = file_name + extension
     if E.organize:
-        if date == "":
+        if date == None:
             date = "Untitled"
         no_good_chars = '\/:*?"<>|.'
         folder_name = date 
@@ -251,21 +244,21 @@ def help_message():
         "optional:\n"
         "-p, --pages\n"
         "    Download images from multiple pages\n\n"
-        "    To download images from page 140 to 150\n"
+        "    Download images from page 140 to 150\n"
         "    >tty http://idol-grapher.tistory.com/ -p 140-150\n\n"
-        "    To download images from page 1, 2 and 3\n"
+        "    Download images from page 1, 2 and 3\n"
         "    >tty http://idol-grapher.tistory.com/ -p 1,2,3\n\n"
-        "    To download images from page 1, 2, 3, 5 to 10 and 20 to 25\n"
+        "    Download images from page 1, 2, 3, 5 to 10 and 20 to 25\n"
         "    >tty http://idol-grapher.tistory.com/ -p 1,2,3,5-10,20-25\n\n"
         "-t, --threads\n"
-        "    Number of simultaneous downloads (max is 32)\n"
+        "    Number of simultaneous downloads (32 max)\n"
         "    >tty http://idol-grapher.tistory.com/140 -t 12\n\n"
         "-o, --organize\n"
-        "    Automatically organizes images in folders\n"
-        "    >tty http://idol-grapher.tistory.com/140 -o\n"
+        "    Organize images by date\n"
+        "    >tty http://idol-grapher.tistory.com/140 -o\n\n"
         "-f, --filter\n"
         "    Download images only from pages where the title contains one of the words you define, multiple words split by \"/\"\n"
-        "    To download images from pages containing the words 여자친구 OR 소원 OR 은하 (translates to GFRIEND, SOWON, EUNHA)\n"
+        "    Download images from pages containing the words 여자친구 OR 소원 OR 은하 (translates to GFRIEND, SOWON, EUNHA)\n"
         "    >tty http://idol-grapher.tistory.com/ -p 20-160 -f 여자친구/소원/은하 (translates to GFRIEND/SOWON)\n\n"
         "    (Note: This only works alongside the -p argument, and most tistory pages use Korean titles so you\n"
         "    may have to translate)")
@@ -292,9 +285,7 @@ def special_case_of_tistory_formatting(url):
     if "fname=" in url and "tistory.com" in url:
         url = urllib.request.url2pathname(url)
         url = url.split("fname=")[-1]
-        return url
-    else:
-        return url
+    return url
 
 def split_pages(p_digits):
     digit_check = p_digits.replace(",", " ")
@@ -367,9 +358,14 @@ def parse_page(html, page_number):
     data = {}
     html = html.decode("utf-8")
     date = None
+
     for meta in E.title1.finditer(html):
         if "og:title" in meta[0]:
-            date = E.title.search(meta[0])[1]
+            try: # make a better regex parser instead of this mess
+                date = E.title.search(meta[0])[1]
+            except:
+                pass
+
     if date is None:
         date = E.title2.search(html)[1]
 
@@ -384,31 +380,32 @@ def parse_page(html, page_number):
     if parse:
         for img in E.imgtag.finditer(html):
             url = E.imgurl.search(img[0])
-            if url is not None:
-                url = url[1]
-            if (url is None or
-                    "tistory_admin" in url or
-                    urllib.parse.urlparse(url).netloc == ""):
+
+            # UGLY FILTER
+            # filter_list = ["tistory_admin", "/skin/"]
+            if url is None:
                 continue
-            if "tistory" in url and "cfile" in url and "/skin/" not in url:
-                if "daumcdn" in url and not url.endswith("?original"):
-                    url = url + "?original"
-                else:
-                    url = url.replace("/image/", "/original/")
-                data["date"] = date
-                data["url"] = url
-                data["page"] = page_number
-                data["retry"] = True
-                E.pic_q.put(data.copy())
+            url = url[1]
+            if "/content/files/" in url: # UGLY http://www.breath39.com/master/20
+                url = "http://{}{}".format(E.netloc, url)
+            if ("tistory_admin" in url 
+                    or urllib.parse.urlparse(url).netloc == ""
+                    or "/skin/" in url):
+                continue
+            if "daumcdn" in url and not url.endswith("?original"):
+                url = url + "?original"
+            else:
+                url = url.replace("/image/", "/original/")
+            data["date"] = date
+            data["url"] = url
+            data["page"] = page_number
+            data["retry"] = True
+            E.pic_q.put(data.copy())
 
 def work_page():
     while E.page_q.qsize() > 0:
         page_number = E.page_q.get()
-        if E.multiple_pages:
-            url = E.url + str(page_number)
-        elif E.rip_all:
-            url = page_number
-            page_number = urllib.parse.urlparse(page_number).path
+        url = E.url + str(page_number)
         print(url)
         html = fetch(url)
         if html is not None:
