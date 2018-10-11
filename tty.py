@@ -36,7 +36,8 @@ class E:
     retry_error = []
     url_error = []
 
-def main(args): # python tty.py www.tistory.ilovegfriend.com/231
+
+def main(args):  # python tty.py www.tistory.ilovegfriend.com/231
     if len(args) < 2:
         print("No arguments given")
         print("\n>tty --help (for help and more options)")
@@ -77,10 +78,15 @@ def main(args): # python tty.py www.tistory.ilovegfriend.com/231
     lock = threading.Lock()
     print("\nStarting download:")
     start_threads(E.number_of_threads, DL)
- 
+
     # Retry in slow mode if there was any timeout errors
     if len(E.retry_error) > 0:
-        print("\n{} image{} {} interrupted, retrying in slow mode:".format(len(E.retry_error), "s" if len(E.retry_error) > 1 else "", "was" if len(E.retry_error) < 2 else "were"))
+        print(
+            "\n{} image{} {} interrupted, retrying in slow mode:".format(
+                len(
+                    E.retry_error), "s" if len(
+                    E.retry_error) > 1 else "", "was" if len(
+                    E.retry_error) < 2 else "were"))
         for x in E.retry_error:
             E.pic_q.put(x)
         start_threads(1, DL)
@@ -103,6 +109,7 @@ def main(args): # python tty.py www.tistory.ilovegfriend.com/231
         print("\nCould not open:")
         [print(url) for url in E.url_error]
 
+
 def start_threads(number_of_threads, _target):
     img_threads = [threading.Thread(target=_target, daemon=True)
                    for i in range(int(number_of_threads))]
@@ -111,20 +118,22 @@ def start_threads(number_of_threads, _target):
         time.sleep(0.1)
     for thread in img_threads:
         thread.join()
-               
+
+
 def DL():
     while E.pic_q.qsize() > 0:
         data = E.pic_q.get()
         url = data["url"]
         date = data["date"]
-        page = " -page /{}".format(data["page"]) if data["page"] is not None else ""
+        page = " -page /{}".format(data["page"]
+                                   ) if data["page"] is not None else ""
 
         # Corrects the url for some cases
         url = special_case_of_tistory_formatting(url)
 
         # Returns image headers in a dictionary, or None if error
-        img_info = fetch(url, retry=data["retry"], img_headers=True, page=page) 
-        if img_info == None:
+        img_info = fetch(url, retry=data["retry"], img_headers=True, page=page)
+        if img_info is None:
             continue
         elif "_TimeoutError_" == img_info:
             data["retry"] = False
@@ -133,7 +142,7 @@ def DL():
 
         # Filter out files under 10kb
         if (img_info["Content-Length"].isdigit() and
-            int(img_info["Content-Length"]) < 10000):
+                int(img_info["Content-Length"]) < 10000):
             E.total_img_found -= 1
             continue
 
@@ -145,7 +154,7 @@ def DL():
 
         print(url)
         mem_file = fetch(url, retry=data["retry"], page=page)
-        if mem_file == None:
+        if mem_file is None:
             continue
         elif "_TimeoutError_" == mem_file:
             data["retry"] = False
@@ -156,7 +165,7 @@ def DL():
             img_path = get_img_path(url, date, img_info)
             if E.testing:
                 continue
-            if img_path != None:
+            if img_path is not None:
                 img_file = open(img_path, "wb")
                 img_file.write(mem_file)
                 img_file.close()
@@ -164,10 +173,11 @@ def DL():
             else:
                 E.already_found += 1
 
+
 def get_img_path(url, date, img_info):
     s_types = [".jpg", ".jpeg", ".png", ".gif"]
     file_name = img_info["Content-Disposition"]
-    if file_name == None:
+    if file_name is None:
         file_name = url.split("/")[-1]
         for s_type in s_types:
             if file_name.endswith(s_type):
@@ -183,10 +193,10 @@ def get_img_path(url, date, img_info):
     extension = extension.replace("jpeg", "jpg")
     file_name = file_name + extension
     if E.organize:
-        if date == None:
+        if date is None:
             date = "Untitled"
-        no_good_chars = '\/:*?"<>|.'
-        folder_name = date 
+        no_good_chars = r'\/:*?"<>|.'
+        folder_name = date
         for char in no_good_chars:
             folder_name = folder_name.replace(char, "")
         img_path = os.path.join(folder_name.strip(), file_name.strip())
@@ -199,9 +209,12 @@ def get_img_path(url, date, img_info):
         if not os.path.exists(img_path):
             return img_path
         else:
-            if int(img_info["Content-Length"]) != int(len(open(img_path, "rb").read())):
-                number = file_name[file_name.rfind("(")+1:file_name.rfind(")")]
-                if number.isdigit and file_name[file_name.rfind(")")+1:].lower() in s_types:
+            if int(img_info["Content-Length"]
+                   ) != int(len(open(img_path, "rb").read())):
+                number = file_name[file_name.rfind(
+                    "(") + 1:file_name.rfind(")")]
+                if number.isdigit and file_name[file_name.rfind(
+                        ")") + 1:].lower() in s_types:
                     file_number = int(number) + 1
                     file_name = file_name.rsplit("(", 1)[0].strip()
                 else:
@@ -209,11 +222,13 @@ def get_img_path(url, date, img_info):
                     file_name = file_name.rsplit(".", 1)[0]
                 file_name = file_name.strip() + " (" + str(file_number) + ")" + extension
                 if E.organize:
-                    img_path = os.path.join(folder_name.strip(), file_name.strip())
+                    img_path = os.path.join(
+                        folder_name.strip(), file_name.strip())
                 else:
                     img_path = file_name.strip()
             else:
                 return None
+
 
 def fetch(url, img_headers=False, retry=False, page=""):
     try:
@@ -225,7 +240,7 @@ def fetch(url, img_headers=False, retry=False, page=""):
     except urllib.error.HTTPError as error:
         print(url, error)
         E.HTTP_error.append(url + str(page))
-    except ValueError as error: # missing http/https
+    except ValueError as error:  # missing http/https
         print(url, error)
         E.url_error.append(url + str(page))
     except Exception as error:
@@ -235,6 +250,7 @@ def fetch(url, img_headers=False, retry=False, page=""):
         else:
             print(url, error)
             E.url_error.append(url + str(page))
+
 
 def help_message():
     print(
@@ -264,11 +280,13 @@ def help_message():
         "    may have to translate)")
     sys.exit()
 
+
 def error_message(error):
     print(error)
     print("\nFor help and more options:")
     print(">tty --help")
     sys.exit()
+
 
 def format_url(url):
     if url.startswith('"') and url.endswith('"'):
@@ -281,11 +299,13 @@ def format_url(url):
         url = "http://" + url
     return url      # http://idol-grapher.tistory.com/
 
+
 def special_case_of_tistory_formatting(url):
     if "fname=" in url and "tistory.com" in url:
         url = urllib.request.url2pathname(url)
         url = url.split("fname=")[-1]
     return url
+
 
 def split_pages(p_digits):
     digit_check = p_digits.replace(",", " ")
@@ -312,12 +332,14 @@ def split_pages(p_digits):
         else:
             E.number_of_pages.append(int(digit))
 
+
 def argument_flags(args):
     for arg in args:
         if arg == "-f" or arg == "--filter":
             E.title_filter = True
             try:
-                E.title_filter_words = args[args.index("-f" if "-f" in args else "--filter") + 1].split('/')
+                E.title_filter_words = args[args.index(
+                    "-f" if "-f" in args else "--filter") + 1].split('/')
             except IndexError:
                 thread_title_filter_error = "{} needs an argument\n\n" \
                                             "Example:\n" \
@@ -328,21 +350,23 @@ def argument_flags(args):
         if arg == "-p" or arg == "--pages":
             E.multiple_pages = True
             try:
-                split_pages(args[args.index("-p" if "-p" in args else "--pages") + 1])
+                split_pages(
+                    args[args.index("-p" if "-p" in args else "--pages") + 1])
             except IndexError:
                 page_error = "{} needs an argument\n\n" \
                              ">tty http://idol-grapher.tistory.com/ -p 1-5".format("-p" if "-p" in args else "--pages")
                 error_message(page_error)
         if arg == "-t" or arg == "--threads":
             try:
-                thread_num = args[args.index("-t" if "-t" in args else "--threads") + 1]
+                thread_num = args[args.index(
+                    "-t" if "-t" in args else "--threads") + 1]
             except IndexError:
                 thread_num_error = "{} needs an argument\n\n" \
                                    ">tty http://idol-grapher.tistory.com/244 -t 6".format("-t" if "-t" in args else "--threads")
                 error_message(thread_num_error)
             if (thread_num.isdigit() and
                 int(thread_num) > 0 and
-                int(thread_num) < 33):
+                    int(thread_num) < 33):
                 E.number_of_threads = int(thread_num)
             else:
                 thread_num_error = "-t needs a number in between 1-32\n" \
@@ -352,7 +376,8 @@ def argument_flags(args):
             E.organize = True
         if arg == "--test":
             E.testing = True
-    
+
+
 def parse_page(html, page_number):
     parse = False
     data = {}
@@ -361,9 +386,9 @@ def parse_page(html, page_number):
 
     for meta in E.title1.finditer(html):
         if "og:title" in meta[0]:
-            try: # make a better regex parser instead of this mess
+            try:  # make a better regex parser instead of this mess
                 date = E.title.search(meta[0])[1]
-            except:
+            except BaseException:
                 pass
 
     if date is None:
@@ -386,21 +411,22 @@ def parse_page(html, page_number):
             if url is None:
                 continue
             url = url[1]
-            if "/content/files/" in url: # UGLY http://www.breath39.com/master/20
+            if "/content/files/" in url:  # UGLY http://www.breath39.com/master/20
                 url = "http://{}{}".format(E.netloc, url)
-            if ("tistory_admin" in url 
+            if ("tistory_admin" in url
                     or urllib.parse.urlparse(url).netloc == ""
                     or "/skin/" in url):
                 continue
             if "daumcdn" in url and not url.endswith("?original"):
                 url = url + "?original"
-            else:
+            elif "tistory" in url:
                 url = url.replace("/image/", "/original/")
             data["date"] = date
             data["url"] = url
             data["page"] = page_number
             data["retry"] = True
             E.pic_q.put(data.copy())
+
 
 def work_page():
     while E.page_q.qsize() > 0:
@@ -410,6 +436,7 @@ def work_page():
         html = fetch(url)
         if html is not None:
             parse_page(html, page_number)
+
 
 if __name__ == "__main__":
     main(sys.argv)
