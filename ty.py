@@ -37,10 +37,10 @@ class E:
     url_error = []
 
 
-def main(args):  # python tty.py www.tistory.ilovegfriend.com/231
+def main(args):  # python ty.py www.tistory.ilovegfriend.com/231
     if len(args) < 2:
         print("No arguments given")
-        print("\n>tty --help (for help and more options)")
+        print("\n>ty --help (for help and more options)")
         input("\nPress Enter to continue")
         sys.exit()
 
@@ -254,28 +254,28 @@ def fetch(url, img_headers=False, retry=False, page=""):
 
 def help_message():
     print(
-        "usage: tty \"url\"\n"
+        "usage: ty \"url\"\n"
         "    Download images from a tistory page\n"
-        "    >tty http://idol-grapher.tistory.com/140\n\n"
+        "    >ty http://idol-grapher.tistory.com/140\n\n"
         "optional:\n"
         "-p, --pages\n"
         "    Download images from multiple pages\n\n"
         "    Download images from page 140 to 150\n"
-        "    >tty http://idol-grapher.tistory.com/ -p 140-150\n\n"
+        "    >ty http://idol-grapher.tistory.com/ -p 140-150\n\n"
         "    Download images from page 1, 2 and 3\n"
-        "    >tty http://idol-grapher.tistory.com/ -p 1,2,3\n\n"
+        "    >ty http://idol-grapher.tistory.com/ -p 1,2,3\n\n"
         "    Download images from page 1, 2, 3, 5 to 10 and 20 to 25\n"
-        "    >tty http://idol-grapher.tistory.com/ -p 1,2,3,5-10,20-25\n\n"
+        "    >ty http://idol-grapher.tistory.com/ -p 1,2,3,5-10,20-25\n\n"
         "-t, --threads\n"
         "    Number of simultaneous downloads (32 max)\n"
-        "    >tty http://idol-grapher.tistory.com/140 -t 12\n\n"
+        "    >ty http://idol-grapher.tistory.com/140 -t 12\n\n"
         "-o, --organize\n"
         "    Organize images by date\n"
-        "    >tty http://idol-grapher.tistory.com/140 -o\n\n"
+        "    >ty http://idol-grapher.tistory.com/140 -o\n\n"
         "-f, --filter\n"
         "    Download images only from pages where the title contains one of the words you define, multiple words split by \"/\"\n"
         "    Download images from pages containing the words 여자친구 OR 소원 OR 은하 (translates to GFRIEND, SOWON, EUNHA)\n"
-        "    >tty http://idol-grapher.tistory.com/ -p 20-160 -f 여자친구/소원/은하 (translates to GFRIEND/SOWON)\n\n"
+        "    >ty http://idol-grapher.tistory.com/ -p 20-160 -f 여자친구/소원/은하 (translates to GFRIEND/SOWON)\n\n"
         "    (Note: This only works alongside the -p argument, and most tistory pages use Korean titles so you\n"
         "    may have to translate)")
     sys.exit()
@@ -284,7 +284,7 @@ def help_message():
 def error_message(error):
     print(error)
     print("\nFor help and more options:")
-    print(">tty --help")
+    print(">ty --help")
     sys.exit()
 
 
@@ -313,7 +313,7 @@ def split_pages(p_digits):
     for digit in digit_check:
         if not digit.isdigit():
             digit_error = "-p only accept numbers\n" \
-                          ">tty http://idol-grapher.tistory.com/ -p 1,2,3-10"
+                          ">ty http://idol-grapher.tistory.com/ -p 1,2,3-10"
             error_message(digit_error)
     p_digits = p_digits.split(",")
     for digit in p_digits:
@@ -325,7 +325,7 @@ def split_pages(p_digits):
             else:
                 negative_error = "{}\n" \
                                  "Can't go from '{} to {}'\n" \
-                                 ">tty http://idol-grapher.tistory.com/ -p 1-10".format(digit, first_digit, second_digit)
+                                 ">ty http://idol-grapher.tistory.com/ -p 1-10".format(digit, first_digit, second_digit)
                 error_message(negative_error)
             for new_digit in range(total_digit + 1):
                 E.number_of_pages.append(new_digit + int(first_digit))
@@ -343,7 +343,7 @@ def argument_flags(args):
             except IndexError:
                 thread_title_filter_error = "{} needs an argument\n\n" \
                                             "Example:\n" \
-                                            ">tty http://idol-grapher.tistory.com/ -p 3-19 -f GFRIEND".format("-f" if "-f" in args else "--filter")
+                                            ">ty http://idol-grapher.tistory.com/ -p 3-19 -f GFRIEND".format("-f" if "-f" in args else "--filter")
                 error_message(thread_title_filter_error)
         if arg == "-h" or arg == "--help":
             help_message()
@@ -354,7 +354,7 @@ def argument_flags(args):
                     args[args.index("-p" if "-p" in args else "--pages") + 1])
             except IndexError:
                 page_error = "{} needs an argument\n\n" \
-                             ">tty http://idol-grapher.tistory.com/ -p 1-5".format("-p" if "-p" in args else "--pages")
+                             ">ty http://idol-grapher.tistory.com/ -p 1-5".format("-p" if "-p" in args else "--pages")
                 error_message(page_error)
         if arg == "-t" or arg == "--threads":
             try:
@@ -362,7 +362,7 @@ def argument_flags(args):
                     "-t" if "-t" in args else "--threads") + 1]
             except IndexError:
                 thread_num_error = "{} needs an argument\n\n" \
-                                   ">tty http://idol-grapher.tistory.com/244 -t 6".format("-t" if "-t" in args else "--threads")
+                                   ">ty http://idol-grapher.tistory.com/244 -t 6".format("-t" if "-t" in args else "--threads")
                 error_message(thread_num_error)
             if (thread_num.isdigit() and
                 int(thread_num) > 0 and
@@ -370,7 +370,7 @@ def argument_flags(args):
                 E.number_of_threads = int(thread_num)
             else:
                 thread_num_error = "-t needs a number in between 1-32\n" \
-                                   ">tty http://idol-grapher.tistory.com/244 -t 6"
+                                   ">ty http://idol-grapher.tistory.com/244 -t 6"
                 error_message(thread_num_error)
         if arg == "-o" or arg == "--organize":
             E.organize = True
