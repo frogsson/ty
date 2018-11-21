@@ -61,7 +61,7 @@ def main(args):  # python ty.py www.tistory.ilovegfriend.com/231
             E.page_q.put(page)
         print("Fetching source for:")
         E.number_of_pages.clear()
-        start_threads(number_of_threads, work_page)
+        start_threads(E.number_of_threads, work_page)
     else:
         print("Fetching page source...")
         html = fetch(E.url)
@@ -110,9 +110,9 @@ def main(args):  # python ty.py www.tistory.ilovegfriend.com/231
         [print(url) for url in E.url_error]
 
 
-def start_threads(number_of_threads, _target):
+def start_threads(t, _target):
     img_threads = [threading.Thread(target=_target, daemon=True)
-                   for i in range(int(number_of_threads))]
+                   for i in range(int(t))]
     for thread in img_threads:
         thread.start()
         time.sleep(0.1)
