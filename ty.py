@@ -377,7 +377,6 @@ def argument_flags(args):
         if arg == "--test":
             E.testing = True
 
-
 def parse_page(html, page_number):
     parse = False
     data = {}
@@ -417,8 +416,11 @@ def parse_page(html, page_number):
                     or urllib.parse.urlparse(url).netloc == ""
                     or "/skin/" in url):
                 continue
-            if "daumcdn" in url and not url.endswith("?original"):
+            if ("daumcdn" in url 
+                and not url.endswith("?original")
+                and not url.endswith("?originall")):
                 url = url + "?original"
+                # url = url.rsplit('?', 1)[0] + "?original" if '?' in url else url + "? original"
             elif "tistory" in url:
                 url = url.replace("/image/", "/original/")
             data["date"] = date

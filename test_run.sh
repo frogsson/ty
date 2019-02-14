@@ -5,5 +5,5 @@ if [[ -n log.txt ]]; then
 fi
 
 for site in $(cat tistories.txt); do
-	python3 ./ty.py "$site" --test >> log.txt
+	python3 ./ty.py "$site" --test | tee -a log.txt
 done
