@@ -75,7 +75,6 @@ def main(args):  # python ty.py www.tistory.ilovegfriend.com/231
     E.total_img_found = E.pic_q.qsize()
 
     # Starts the download
-    lock = threading.Lock()
     print("\nStarting download:")
     start_threads(E.number_of_threads, DL)
 
@@ -122,7 +121,8 @@ def start_threads(t, _target):
 
 def DL():
     while E.pic_q.qsize() > 0:
-        data = E.pic_q.get()
+        with E.lock:
+            data = E.pic_q.get()
         url = data["url"]
         date = data["date"]
         page = " -page /{}".format(data["page"]
@@ -137,19 +137,22 @@ def DL():
             continue
         elif "_TimeoutError_" == img_info:
             data["retry"] = False
-            E.retry_error.append(data)
+            with E.lock:
+                E.retry_error.append(data)
             continue
 
         # Filter out files under 10kb
         if (img_info["Content-Length"].isdigit() and
                 int(img_info["Content-Length"]) < 10000):
-            E.total_img_found -= 1
+            with E.lock:
+                E.total_img_found -= 1
             continue
 
         # Filter out non jpg/gif/png
         types = ["image/jpeg", "image/png", "image/gif"]
         if img_info["Content-Type"] not in types:
-            E.total_img_found -= 1
+            with E.lock:
+                E.total_img_found -= 1
             continue
 
         print(url)
@@ -158,7 +161,8 @@ def DL():
             continue
         elif "_TimeoutError_" == mem_file:
             data["retry"] = False
-            E.retry_error.append(data)
+            with E.lock:
+                E.retry_error.append(data)
             continue
 
         with E.lock:
@@ -239,17 +243,20 @@ def fetch(url, img_headers=False, retry=False, page=""):
             return r.read()
     except urllib.error.HTTPError as error:
         print(url, error)
-        E.HTTP_error.append(url + str(page))
+        with E.lock:
+            E.HTTP_error.append(url + str(page))
     except ValueError as error:  # missing http/https
         print(url, error)
-        E.url_error.append(url + str(page))
+        with E.lock:
+            E.url_error.append(url + str(page))
     except Exception as error:
         print(url, error)
         if retry:
             return "_TimeoutError_"
         else:
             print(url, error)
-            E.url_error.append(url + str(page))
+            with E.lock:
+                E.url_error.append(url + str(page))
 
 
 def help_message():
@@ -426,12 +433,14 @@ def parse_page(html, page_number):
             data["url"] = url
             data["page"] = page_number
             data["retry"] = True
-            E.pic_q.put(data.copy())
+            with E.lock:
+                E.pic_q.put(data.copy())
 
 
 def work_page():
     while E.page_q.qsize() > 0:
-        page_number = E.page_q.get()
+        with E.lock:
+            page_number = E.page_q.get()
         url = E.url + str(page_number)
         print(url)
         html = fetch(url)
