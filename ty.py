@@ -380,7 +380,7 @@ def argument_flags(args):
 def parse_page(html, page_number):
     parse = False
     data = {}
-    html = html.decode("utf-8")
+    html = html.decode("utf-8", "replace")
     date = None
 
     for meta in E.title1.finditer(html):
@@ -405,24 +405,23 @@ def parse_page(html, page_number):
         for img in E.imgtag.finditer(html):
             url = E.imgurl.search(img[0])
 
-            # UGLY FILTER
-            # filter_list = ["tistory_admin", "/skin/"]
+            # don't like this code block at all
+            # and I want to change it
             if url is None:
                 continue
             url = url[1]
-            if "/content/files/" in url:  # UGLY http://www.breath39.com/master/20
+            if "/content/files/" in url:  # http://www.breath39.com/master/20
                 url = "http://{}{}".format(E.netloc, url)
             if ("tistory_admin" in url
                     or urllib.parse.urlparse(url).netloc == ""
                     or "/skin/" in url):
                 continue
             if ("daumcdn" in url 
-                and not url.endswith("?original")
-                and not url.endswith("?originall")):
+                    and re.search('o+?r+?i+?g+?i+?n+?a+?l+?', url, flags=re.IGNORECASE) is None):
                 url = url + "?original"
-                # url = url.rsplit('?', 1)[0] + "?original" if '?' in url else url + "? original"
             elif "tistory" in url:
                 url = url.replace("/image/", "/original/")
+
             data["date"] = date
             data["url"] = url
             data["page"] = page_number
