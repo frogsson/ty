@@ -19,12 +19,12 @@ class E:
     organize = False
     testing = False
 
-    title = re.compile('content="(.+?)"')
+    title = re.compile('content=["|\'](.+?)["|\']')
     title1 = re.compile('<meta.+?>')
     title2 = re.compile('<title>(.+?)</title>')
 
     imgtag = re.compile('<img.+?>')
-    imgurl = re.compile('src="(.+?)"')
+    imgurl = re.compile('src=["|\'](.+?)["|\']')
 
     pic_q = queue.Queue()
     page_q = queue.Queue()
