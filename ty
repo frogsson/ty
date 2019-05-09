@@ -25,6 +25,7 @@ class E:
 
     imgtag = re.compile('<img.+?>')
     imgurl = re.compile('src=["|\'](.+?)["|\']')
+    datafn = re.compile('data-filename=["\'](.+?)["\']')
 
     pic_q = queue.Queue()
     page_q = queue.Queue()
@@ -144,7 +145,7 @@ def DL():
             continue
 
         # Filter out files under 10kb
-        if (img_info["Content-Length"].isdigit() and
+        if (not img_info["Content-Length"] or img_info["Content-Length"].isdigit() and
                 int(img_info["Content-Length"]) < 10000):
             with E.lock:
                 E.total_img_found -= 1
@@ -152,7 +153,7 @@ def DL():
 
         # Filter out non jpg/gif/png
         types = ["image/jpeg", "image/png", "image/gif"]
-        if img_info["Content-Type"] not in types:
+        if not img_info["Content-Type"] or img_info["Content-Type"] not in types:
             with E.lock:
                 E.total_img_found -= 1
             continue
@@ -419,17 +420,21 @@ def parse_page(html, page_number):
             if url is None:
                 continue
             url = url[1]
-            if "/content/files/" in url:  # http://www.breath39.com/master/20
-                url = "http://{}{}".format(E.netloc, url)
-            if ("tistory_admin" in url
-                    or urllib.parse.urlparse(url).netloc == ""
-                    or "/skin/" in url):
+            
+            if "/skin/" in url or "/tistory_admin/" in url:
                 continue
-            if ("daumcdn" in url 
-                    and re.search('o+?r+?i+?g+?i+?n+?a+?l+?', url, flags=re.IGNORECASE) is None):
-                url = url + "?original"
-            elif "tistory" in url:
-                url = url.replace("/image/", "/original/")
+            if not re.search('^https?://', url):
+                url = '{}://{}{}'.format(E.scheme, E.netloc, url)
+
+            if "tistory" in url and "cfile" in url:
+                if "daumcdn" in url:
+                    url = url.rsplit('?', 1)[0] + "?original" if '?' in url else url + "?original"
+                else:
+                    url = url.replace("/image/", "/original/")
+            elif "kakaocdn" in url and "img.jpg" in url:
+                filename = E.datafn.search(img[0])
+                filename = filename[1] if filename else None
+                url = url.rsplit('/', 1)[0] + '/' + filename + '?knm=img.jpg'
 
             data["date"] = date
             data["url"] = url
