@@ -73,13 +73,14 @@ def main(args):
 
     if E.error_links:
         logger.info('Errors: %s', len(E.error_links))
-    if len(E.error_links) > 0:
-        print("\nCould not open:")
-        [print(url) for url in E.error_links]
+    if E.error_links:
+        print("\nCould not download:")
+        for url in E.error_links:
+            print(url)
 
 
 def start_threads(t, _target):
-    img_threads = [threading.Thread(target=_target, daemon=True) for i in range(int(t))]
+    img_threads = [threading.Thread(target=_target) for i in range(int(t))]
 
     for thread in img_threads:
         thread.start()
@@ -214,25 +215,6 @@ def fetch(url, page=""):
         with E.lock:
             E.error_links.append(url + str(page))
         return None
-
-
-def error_message(error):
-    print(error)
-    print("\nFor help and more options:")
-    print(">ty --help")
-    sys.exit()
-
-
-def format_url(url):
-    if url.startswith('"') and url.endswith('"'):
-        url = url.strip('"')
-    if url.startswith("http://www."):
-        url = "http://" + url[11:]
-    elif url.startswith("www."):
-        url = "http://" + url[4:]
-    elif not url.startswith("http") and not url.startswith("https"):
-        url = "http://" + url
-    return url      # http://idol-grapher.tistory.com/
 
 
 def parse_page(page_url, page_html, page_number):
