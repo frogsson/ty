@@ -39,7 +39,7 @@ def main(args):
     else:
         logging.basicConfig(level=logging.INFO, format='%(name)s: %(message)s')
 
-    logger = logging.getLogger('ty')
+    # logger = logging.getLogger('main')
     logging.debug('%s', E.url)
 
     # Parse pages for images
@@ -72,7 +72,7 @@ def main(args):
         print("Already saved:", E.already_found)
 
     if E.error_links:
-        logger.info('Errors: %s', len(E.error_links))
+        print('Errors: %s', len(E.error_links))
     if E.error_links:
         print("\nCould not download:")
         for url in E.error_links:
@@ -119,15 +119,15 @@ def DL():
                 E.total_img_found -= 1
             continue
 
-        logging.info('%s', url)
+        print(url)
         with E.lock:
             img_path = get_img_path(url, title, img_info, filename=data['filename'])
             if E.debug:
                 continue
             if img_path is not None:
-                img_file = open(img_path, "wb")
-                img_file.write(img_content.read())
-                img_file.close()
+                print(img_path)
+                with open(img_path, 'wb') as f:
+                    f.write(img_content.read())
                 E.imgs_downloaded += 1
             else:
                 E.already_found += 1
@@ -167,7 +167,8 @@ def get_img_path(url, title, img_info, filename):
         folder_name = title
         for char in no_good_chars:
             folder_name = folder_name.replace(char, "")
-        img_path = os.path.join(folder_name.strip(), filename)
+        folder_name = folder_name.strip()
+        img_path = os.path.join(folder_name, filename)
         if not os.path.exists(folder_name):
             os.makedirs(folder_name)
     else:
