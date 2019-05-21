@@ -54,6 +54,12 @@ class ArgSettings:
         for num in range(fnum, snum + 1):
             self.pages.append(num)
 
+    def page_status(self):
+        """return true if it there's multiple pages"""
+        if self.pages:
+            return True
+        return False
+
     def get_pages(self):
         """returns list of pages"""
         self.logger.debug('get_pages()')
@@ -79,11 +85,6 @@ class ArgSettings:
         """returns list of words to include"""
         self.logger.debug('get_title_filter()')
         return self.title_filter
-
-    def title_filter_status(self):
-        """returns true if title_filter has items"""
-        self.logger.debug('get_title_filter_status()')
-        return bool(self.title_filter)
 
     def debug_true(self):
         """sets debug to true"""
@@ -116,7 +117,7 @@ def create_parse_arguments():
     pars.add_argument('-f', '--filter',
                       metavar='word',
                       type=str,
-                      help='download [-p/--pages] containing word specified in filter')
+                      help='download [-p/--pages] containing word specified in filter (used with [-p/--page])')
     pars.add_argument('--debug',
                       action='store_true',
                       help='runs program in debug mode')
@@ -164,11 +165,14 @@ if __name__ == "__main__":
                         format='%(name)s: %(message)s')
 
     if len(sys.argv) > 1:
-        SETTINGS = parse(sys.argv)
+        logging.debug('args: %s', sys.argv)
+        SETTINGS = parse(sys.argv[1:])
     else:
-        SETTINGS = parse('http -o -p 1 5 -t 12 -f hello/world'.split())
+        logging.debug('args: %s', sys.argv)
+        SETTINGS = parse('https://sparkles805.tistory.com/228 -o -p 1 5 -t 12 -f hello/world'.split())
 
     logging.debug("organize: %s", SETTINGS.organize_status())
+    logging.debug("url: %s", SETTINGS.get_url())
     logging.debug("page: %s", SETTINGS.get_pages())
     logging.debug("threads: %s", SETTINGS.get_threads())
     logging.debug("filter: %s - status: %r",
