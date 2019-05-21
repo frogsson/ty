@@ -125,7 +125,6 @@ def DL():
             if E.debug:
                 continue
             if img_path is not None:
-                print(img_path)
                 with open(img_path, 'wb') as f:
                     f.write(img_content.read())
                 E.imgs_downloaded += 1
