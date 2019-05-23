@@ -2,7 +2,6 @@
 
 import urllib.parse
 import logging
-import queue
 import re
 
 
