@@ -14,21 +14,18 @@ import tistory_extractor as tistory
 SPECIAL_CHARS = r'!\"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'
 CONTENT_TYPES = ["image/jpeg", "image/png", "image/gif, image/webp"]
 IMG_EXTS = ['jpg', 'jpeg', 'png', 'gif', 'webp']
+LOCK = threading.Lock()
 
 
 class E:
-    pic_q = queue.Queue()
-    page_q = queue.Queue()
-    lock = threading.Lock()
-
     imgs_downloaded = 0
-    total_img_found = 0
     already_found = 0
-
     error_links = []
 
 
 def run(args):
+    pic_q = queue.Queue()
+
     settings = argparser.parse(args[1:])
     E.title_filter_words = settings.get_title_filter()
     E.debug = settings.debug_status()
@@ -42,33 +39,33 @@ def run(args):
     else:
         logging.basicConfig(level=logging.INFO, format='%(name)s: %(message)s')
 
-    # logger = logging.getLogger('main')
     logging.debug('%s', E.url)
 
     # Parse pages for images
     if settings.page_status():
         if not E.url.endswith("/"):
             E.url = E.url + "/"
+        page_q = queue.Queue()
         for page in settings.get_pages():
-            E.page_q.put(page)
+            page_q.put(page)
         print("Fetching source for:")
-        start_threads(settings.get_threads(), work_page)
+        start_threads(work_page, [page_q, pic_q], settings.get_threads())
     else:
         print("Fetching page source...")
         html = fetch(E.url)
         if html:
-            parse_page(E.url, html, '')
+            parse_page(E.url, html, '', pic_q)
         else:
             sys.exit()
-    E.total_img_found = E.pic_q.qsize()
+    total_img_found = pic_q.qsize()
 
     # Starts the download
     print("\nStarting download:")
-    start_threads(settings.get_threads(), DL)
+    start_threads(download, [pic_q], settings.get_threads())
 
     # Final report
     print("\nDone!")
-    print("Found:", E.total_img_found)
+    print("Found:", total_img_found)
     if E.imgs_downloaded > 0:
         print("Saved:", E.imgs_downloaded)
     if E.already_found > 0:
@@ -82,22 +79,20 @@ def run(args):
             print(url)
 
 
-def start_threads(t, _target):
-    img_threads = [threading.Thread(target=_target) for i in range(int(t))]
-
+def start_threads(target, q, t):
+    img_threads = [threading.Thread(target=target, args=q) for i in range(t)]
     for thread in img_threads:
         thread.start()
-
     for thread in img_threads:
         thread.join()
 
 
-def DL():
-    while E.pic_q.qsize() > 0:
-        data = E.pic_q.get()
+def download(pic_q):
+    while pic_q.qsize() > 0:
+        data = pic_q.get()
         url = data["url"]
         title = data["title"]
-        page = " -page /", data["page"] if data["page"] is not None else ""
+        page = " -page /{}".format(data["page"]) if data["page"] is not None else ""
 
         # fetch image content, returns None if error
         img_content = fetch(url, page=page)
@@ -107,20 +102,8 @@ def DL():
 
         img_info = img_content.info()
 
-        # Filter out files under 10kb
-        if img_info["Content-Length"] and int(img_info["Content-Length"]) < 10000:
-            with E.lock:
-                E.total_img_found -= 1
-            continue
-
-        # Filter out non jpg/gif/png
-        if not img_info["Content-Type"] or img_info["Content-Type"] not in CONTENT_TYPES:
-            with E.lock:
-                E.total_img_found -= 1
-            continue
-
         print(url)
-        with E.lock:
+        with LOCK:
             img_path = get_img_path(url, title, img_info, filename=data['filename'])
             if E.debug:
                 continue
@@ -149,6 +132,10 @@ def get_img_path(url, folder_name, img_info, filename):
         filename = filename.strip('/')
 
     if '.' in filename and filename.rsplit('.', 1)[1] not in IMG_EXTS:
+        extension = "." + img_info["Content-Type"].split("/")[1]
+        extension = extension.replace("jpeg", "jpg")
+        filename = filename + extension
+    elif '.' not in filename:
         extension = "." + img_info["Content-Type"].split("/")[1]
         extension = extension.replace("jpeg", "jpg")
         filename = filename + extension
@@ -199,29 +186,30 @@ def fetch(url, page=""):
                        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_4) \
                        AppleWebKit/601.5.17 (KHTML, like Gecko) Version/9.1 Safari/601.5.17')
         req = urllib.request.urlopen(req)
-        logger.debug('returning successful request [HTTP status code: %s]', req.getcode())
+        logger.debug('returning request [HTTP status code: %s]', req.getcode())
         return req
     except Exception as err:
-        logger.debug('error: %s', err)
-        with E.lock:
+        logger.debug('Error: %s', err)
+        print('Error: %s' % err)
+        with LOCK:
             E.error_links.append(url + str(page))
         return None
 
 
-def parse_page(page_url, page_html, page_number):
-    page = tistory.Extractor(page_url, page_html, page_number)
-    for link in page.get_links():
-        E.pic_q.put(link)
-
-
-def work_page():
-    while E.page_q.qsize() > 0:
-        page_number = E.page_q.get()
-        url = E.url + str(page_number)
+def work_page(page_q, pic_q):
+    while page_q.qsize() > 0:
+        page_num = page_q.get()
+        url = E.url + str(page_num)
         print(url)
         html = fetch(url)
         if html is not None:
-            parse_page(url, html, page_number)
+            parse_page(url, html, page_num, pic_q)
+
+
+def parse_page(page_url, page_html, page_number, pic_q):
+    page = tistory.Extractor(page_url, page_html, page_number)
+    for link in page.get_links():
+        pic_q.put(link)
 
 
 if __name__ == "__main__":
@@ -230,6 +218,6 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         ARG = sys.argv
     else:
-        ARG = 'ty https://ohcori.tistory.com/321 --debug -o -t 6 -f hello/world'.split()
+        ARG = 'ty https://ohcori.tistory.com/321 --debug -o -t 1 -f hello/world'.split()
 
     run(ARG)
