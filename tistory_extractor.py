@@ -67,7 +67,6 @@ class Extractor:
 
     def exclude(self, components):
         """a bunch of filter checks"""
-        self.logger.debug('exclude()')
         if len(components.path) < 2:
             self.logger.debug('components.path is less than one removing: %s', components.geturl())
             return True
@@ -139,4 +138,6 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG, format='%(name)s: %(message)s')
 
     u = 'https://jjoggomi.tistory.com/803'
-    extractor = Extractor(u, "", "")
+    import urllib.request
+    r = urllib.request.urlopen(u)
+    extractor = Extractor(u, r, "")
