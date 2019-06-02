@@ -160,7 +160,7 @@ def get_img_path(url, folder_name, img_info, filename):
 
         if int(img_info["Content-Length"]) != int(len(open(img_path, "rb").read())):
             number = filename[filename.rfind("(") + 1:filename.rfind(")")]
-            if number.isdigit and filename[filename.rfind(")") + 1:].lower() in IMG_EXTS:
+            if number.isdigit() and filename[filename.rfind(")") + 1:].lower() in IMG_EXTS:
                 file_number = int(number) + 1
                 filename = filename.rsplit("(", 1)[0].strip()
             else:
