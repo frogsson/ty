@@ -9,7 +9,8 @@ class Extractor:
     """extractor for Tistory"""
     regex = {
         'title_meta': re.compile('<meta.+?>'),
-        'title_content': re.compile('content=["\'](.+?)["\']'),
+        'title_doublequotes': re.compile('content="(.+?)"'),
+        'title_singlequotes': re.compile("content='(.+?)'"),
         'title_fallback': re.compile('<title>(.+?)</title>'),
         'imgtag': re.compile('<img.+?>'),
         'imgurl': re.compile('src=["\'](.+?)["\']'),
@@ -37,11 +38,22 @@ class Extractor:
         date = None
         for meta in self.regex["title_meta"].finditer(self.html):
             if "og:title" in meta[0]:
-                date = self.regex["title_content"].search(meta[0])[1]
-                break
-        if date is None:
-            date = self.regex['title_fallback'].search(self.html)[1]
-        self.logger.debug('title: %s', date)
+                # checks first for contents="*" then contents='*' if doublequotes doesn't exist
+                date = self.regex['title_doublequotes'].search(meta[0])
+                if not date:
+                    date = self.regex['title_singlequotes'].search(meta[0])
+
+                if date:
+                    break
+
+        if not date:
+            date = self.regex['title_fallback'].search(self.html)
+
+        if date:
+            date = date[0]
+            self.logger.debug('title: %s', date)
+        else:
+            self.logger.debug('no title')
 
         return date
 
@@ -49,10 +61,9 @@ class Extractor:
         """find urls"""
         self.logger.debug('find_links()')
         for imgtag in self.regex['imgtag'].finditer(self.html):
-            imgtag = imgtag[0]
-            reg_url = self.regex['imgurl'].search(imgtag)
+            reg_url = self.regex['imgurl'].search(imgtag[0])
 
-            if imgtag and reg_url:
+            if reg_url:
                 url_components = self.format_components(reg_url[1])
 
                 if self.exclude(url_components):
@@ -61,17 +72,22 @@ class Extractor:
                 url_info = {'url': url_components.geturl(),
                             'title': self.title,
                             'page': self.page_num,
-                            'filename': self.find_filename(imgtag)}
+                            'filename': self.find_filename(imgtag[0])}
 
                 self.add_item(url_info)
 
     def exclude(self, components):
         """a bunch of filter checks"""
         if len(components.path) < 2:
-            self.logger.debug('components.path is less than one removing: %s', components.geturl())
+            self.logger.debug('components.path is less than two removing: %s', components.geturl())
             return True
 
-        if "/skin/" in components.path or "/tistory_admin/" in components.path:
+        if "/skin/" in components.path:
+            self.logger.debug('found /skin/ in: %s', components.geturl())
+            return True
+
+        if "/tistory_admin/" in components.path:
+            self.logger.debug('found /tistory_admin/ in: %s', components.geturl())
             return True
 
         return False
