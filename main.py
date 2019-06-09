@@ -9,6 +9,7 @@ import sys
 import os
 import argparser
 import tistory_extractor as tistory
+import httpbin
 
 
 SPECIAL_CHARS = r'!\"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'
@@ -16,11 +17,14 @@ CONTENT_TYPES = ["image/jpeg", "image/png", "image/gif, image/webp"]
 IMG_EXTS = ['jpg', 'jpeg', 'png', 'gif', 'webp']
 LOCK = threading.Lock()
 
+# issue: if multiple pages have the same url saved to same directory they'll be marked as "already saved"
+# TODO add directory to img_path
+# TODO
+
 
 class E:
     imgs_downloaded = 0
     already_found = 0
-    error_links = []
 
 
 def run(args):
@@ -52,7 +56,7 @@ def run(args):
         start_threads(work_page, [page_q, pic_q], settings.get_threads())
     else:
         print("Fetching page source...")
-        html = fetch(E.url)
+        html = httpbin.Fetch(E.url).body()
         if html:
             parse_page(E.url, html, '', pic_q)
         else:
@@ -71,11 +75,9 @@ def run(args):
     if E.already_found > 0:
         print("Already saved:", E.already_found)
 
-    if E.error_links:
-        print('Errors: %s' % len(E.error_links))
-    if E.error_links:
+    if httpbin.Fetch.errors:
         print("\nCould not download:")
-        for url in E.error_links:
+        for url in httpbin.Fetch.errors:
             print(url)
 
 
@@ -92,30 +94,27 @@ def download(pic_q):
         data = pic_q.get()
         url = data["url"]
         title = data["title"]
-        page = " -page /{}".format(data["page"]) if data["page"] is not None else ""
+        # page = " -page /{}".format(data["page"]) if data["page"] is not None else ""
 
-        # fetch image content, returns None if error
-        img_content = fetch(url, page=page)
+        content = httpbin.Fetch(url)
 
-        if img_content is None:
+        if content is None:
             continue
-
-        img_info = img_content.info()
 
         print(url)
         with LOCK:
-            img_path = get_img_path(url, title, img_info, filename=data['filename'])
+            img_path = get_img_path(url, title, content.info(), filename=data['filename'])
             if E.debug:
                 continue
             if img_path is not None:
                 with open(img_path, 'wb') as f:
-                    f.write(img_content.read())
+                    f.write(content.body())
                 E.imgs_downloaded += 1
             else:
                 E.already_found += 1
 
 
-def get_img_path(url, folder_name, img_info, filename):
+def get_img_path(url, folder, img_info, filename):
     if img_info['Content-Disposition'] and not filename:
         # filename fallback 1
         filename = img_info['Content-Disposition']
@@ -128,29 +127,33 @@ def get_img_path(url, folder_name, img_info, filename):
 
     if not filename:
         # filename fallback 2
-        filename = url.split('/')[-1]
+        filename = url.rsplit('/', 1)[1]
         filename = filename.strip('/')
 
-    if '.' in filename and filename.rsplit('.', 1)[1] not in IMG_EXTS:
-        extension = "." + img_info["Content-Type"].split("/")[1]
-        extension = extension.replace("jpeg", "jpg")
-        filename = filename + extension
-    elif '.' not in filename:
-        extension = "." + img_info["Content-Type"].split("/")[1]
-        extension = extension.replace("jpeg", "jpg")
-        filename = filename + extension
+    if not filename:
+        # filename fallback 3
+        filename = 'image'
 
     filename = filename.strip()
+    extension = "." + img_info["Content-Type"].split("/")[1]
+    extension = extension.replace("jpeg", "jpg")
+
+    if '.' in filename and filename.rsplit('.', 1)[1] not in IMG_EXTS:
+        # if filename randomly has a dot in its name
+        filename = filename + extension
+    elif '.' not in filename:
+        # no filename has no extension
+        filename = filename + extension
 
     if E.organize:
-        if folder_name is None:
-            folder_name = "Untitled"
+        if folder is None:
+            folder = "Untitled"
         for char in SPECIAL_CHARS:
-            folder_name = folder_name.replace(char, "")
-        folder_name = folder_name.strip()
-        img_path = os.path.join(folder_name, filename)
-        if not os.path.exists(folder_name):
-            os.makedirs(folder_name)
+            folder = folder.replace(char, "")
+        folder = folder.strip()
+        img_path = os.path.join(folder, filename)
+        if not os.path.exists(folder):
+            os.makedirs(folder)
     else:
         img_path = filename.strip()
 
@@ -160,40 +163,36 @@ def get_img_path(url, folder_name, img_info, filename):
 
         if int(img_info["Content-Length"]) != int(len(open(img_path, "rb").read())):
             number = filename[filename.rfind("(") + 1:filename.rfind(")")]
-            if number.isdigit() and filename[filename.rfind(")") + 1:].lower() in IMG_EXTS:
+            if number.isdigit() and filename.rsplit(".", 1)[1].lower() in IMG_EXTS:
                 file_number = int(number) + 1
                 filename = filename.rsplit("(", 1)[0].strip()
             else:
                 file_number = 2
                 filename = filename.rsplit(".", 1)[0]
-            filename = filename.strip() + " (" + str(file_number) + ")" + extension
+            # filename = filename.strip() + " (" + str(file_number) + ")" + extension
+            filename = "{} ({}){}".format(filename, file_number, extension)
             if E.organize:
                 img_path = os.path.join(
-                    folder_name.strip(), filename.strip())
+                    folder.strip(), filename)
             else:
-                img_path = filename.strip()
+                img_path = filename
         else:
             return None
 
 
-def fetch(url, page=""):
-    """sends a http get request and returns html content"""
-    logger = logging.getLogger('fetch')
-    logger.debug('fetching: %s', url)
-    try:
-        req = urllib.request.Request(url)
-        req.add_header('User-Agent',
-                       'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_4) \
-                       AppleWebKit/601.5.17 (KHTML, like Gecko) Version/9.1 Safari/601.5.17')
-        req = urllib.request.urlopen(req)
-        logger.debug('returning request [HTTP status code: %s]', req.getcode())
-        return req
-    except Exception as err:
-        logger.debug('Error: %s', err)
-        print('Error: %s' % err)
-        with LOCK:
-            E.error_links.append(url + str(page))
-        return None
+# def test(folder, file):
+#     if E.organize:
+#         if folder is None:
+#             folder = "Untitled"
+#         for char in SPECIAL_CHARS:
+#             folder = folder.replace(char, "")
+#         folder = folder.strip()
+#         img_path = os.path.join(folder, filename)
+#         if not os.path.exists(folder):
+#             os.makedirs(folder)
+#     else:
+#         img_path = filename.strip()
+# 
 
 
 def work_page(page_q, pic_q):
@@ -201,7 +200,7 @@ def work_page(page_q, pic_q):
         page_num = page_q.get()
         url = E.url + str(page_num)
         print(url)
-        html = fetch(url)
+        html = httpbin.Fetch(url).body()
         if html is not None:
             parse_page(url, html, page_num, pic_q)
 
