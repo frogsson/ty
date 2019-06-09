@@ -22,7 +22,7 @@ class Extractor:
     def __init__(self, page_url, page_html, page_num):
         self.logger = logging.getLogger('Tistory Extractor')
         self.page_url = urllib.parse.urlparse(page_url)
-        self.html = page_html.read().decode('utf-8', 'replace')
+        self.html = page_html.decode('utf-8', 'replace')
         self.title = self.find_title()
         self.page_num = page_num
         self.links = []
@@ -40,6 +40,7 @@ class Extractor:
             if "og:title" in meta[0]:
                 # checks first for contents="*" then contents='*' if doublequotes doesn't exist
                 date = self.regex['title_doublequotes'].search(meta[0])
+
                 if not date:
                     date = self.regex['title_singlequotes'].search(meta[0])
 
@@ -50,7 +51,7 @@ class Extractor:
             date = self.regex['title_fallback'].search(self.html)
 
         if date:
-            date = date[0]
+            date = date[1]
             self.logger.debug('title: %s', date)
         else:
             self.logger.debug('no title')
@@ -74,7 +75,8 @@ class Extractor:
                             'page': self.page_num,
                             'filename': self.find_filename(imgtag[0])}
 
-                self.add_item(url_info)
+                if url_info not in self.links:
+                    self.add_item(url_info)
 
     def exclude(self, components):
         """a bunch of filter checks"""
