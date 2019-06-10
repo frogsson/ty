@@ -18,6 +18,7 @@ class Extractor:
         'filename_fallback1': re.compile('filename=["\'](.+?)["\']'),
         'filename_fallback2': re.compile('file_name=["\'](.+?)["\']'),
     }
+    special_chars = r'!\"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'
 
     def __init__(self, page_url, page_html, page_num):
         self.logger = logging.getLogger('Tistory Extractor')
@@ -35,7 +36,7 @@ class Extractor:
         returns String or NoneType
         """
         self.logger.debug('find_title()')
-        date = None
+        date = ''
         for meta in self.regex["title_meta"].finditer(self.html):
             if "og:title" in meta[0]:
                 # checks first for contents="*" then contents='*' if doublequotes doesn't exist
@@ -54,7 +55,11 @@ class Extractor:
             date = date[1]
             self.logger.debug('title: %s', date)
         else:
+            date = 'Untitled'
             self.logger.debug('no title')
+
+        for char in self.special_chars:
+            date = date.replace(char, "")
 
         return date
 
