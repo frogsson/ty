@@ -5,5 +5,8 @@ if [[ -n log.txt ]]; then
 fi
 
 for site in $(cat tistories.txt); do
-	python3 ./ty "$site" --test | tee -a log.txt
+	# python3 ./ty --debug "$site" | tee -a log.txt
+	echo "__ RUNNING $site __"
+	if [[ ! -d tytest ]]; then mkdir "tytest"; fi
+	python3 ./ty -o "$site" "tytest" | tee -a log.txt
 done
