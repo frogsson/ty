@@ -19,11 +19,11 @@ class ArgSettings:
     def __init__(self):
         self.logger = logging.getLogger('ArgSettings')
         self.url = ''
-        self.directory = ''
+        self.directory = conf.directory
         self.threads = conf.threads
         self.organize = conf.organize
-        self.pages = []
-        self.title_filter = []
+        self.pages = conf.pages
+        self.title_filter = conf.title_filter
         self.debug = False
 
     def set_url(self, url):
@@ -105,11 +105,9 @@ class ArgSettings:
 
         self.directory = directory
 
-    def dir(self):
-        """return true if directory is given"""
-        if self.directory:
-            return True
-        return False
+    def get_dir(self):
+        """"returns directory"""
+        return self.directory
 
 
 def create_parse_arguments():
