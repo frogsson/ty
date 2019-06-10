@@ -16,6 +16,11 @@ class Fetch:
         self.url = url
         self._info, self._body = self.urlopen()
 
+    def __bool__(self):
+        if self._info and self._body:
+            return True
+        return False
+
     def urlopen(self):
         try:
             req = urllib.request.Request(self.url, headers=self.headers)
@@ -25,10 +30,10 @@ class Fetch:
                 self.logger.debug('returning request [HTTP status code: %s]', req.getcode())
             return info, body
         except Exception as err:
-            err = "{} [{}]".format(self.url, err)
+            err = "{} {}".format(self.url, err)
             print(err)
             self.errors.append(err)
-            return None
+            return None, None
 
     def body(self):
         return self._body
