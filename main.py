@@ -12,14 +12,11 @@ import tistory_extractor as tistory
 import httpbin
 
 
-SPECIAL_CHARS = r'!\"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'
 CONTENT_TYPES = ["image/jpeg", "image/png", "image/gif, image/webp"]
 IMG_EXTS = ['jpg', 'jpeg', 'png', 'gif', 'webp']
 LOCK = threading.Lock()
 
 # issue: if multiple pages have the same url saved to same directory they'll be marked as "already saved"
-# TODO add directory to img_path
-# TODO
 
 
 class E:
@@ -34,6 +31,7 @@ def run(args):
     E.title_filter_words = settings.get_title_filter()
     E.debug = settings.debug_status()
     E.organize = settings.organize_status()
+    E.dir = settings.get_dir()
 
     E.url = settings.get_url()
     E.urlparse = urllib.parse.urlparse(E.url)
@@ -94,11 +92,9 @@ def download(pic_q):
         data = pic_q.get()
         url = data["url"]
         title = data["title"]
-        # page = " -page /{}".format(data["page"]) if data["page"] is not None else ""
 
         content = httpbin.Fetch(url)
-
-        if content is None:
+        if not content:
             continue
 
         print(url)
@@ -106,7 +102,7 @@ def download(pic_q):
             img_path = get_img_path(url, title, content.info(), filename=data['filename'])
             if E.debug:
                 continue
-            if img_path is not None:
+            if img_path:
                 with open(img_path, 'wb') as f:
                     f.write(content.body())
                 E.imgs_downloaded += 1
@@ -114,7 +110,7 @@ def download(pic_q):
                 E.already_found += 1
 
 
-def get_img_path(url, folder, img_info, filename):
+def get_img_path(url, title, img_info, filename):
     if img_info['Content-Disposition'] and not filename:
         # filename fallback 1
         filename = img_info['Content-Disposition']
@@ -145,17 +141,7 @@ def get_img_path(url, folder, img_info, filename):
         # no filename has no extension
         filename = filename + extension
 
-    if E.organize:
-        if folder is None:
-            folder = "Untitled"
-        for char in SPECIAL_CHARS:
-            folder = folder.replace(char, "")
-        folder = folder.strip()
-        img_path = os.path.join(folder, filename)
-        if not os.path.exists(folder):
-            os.makedirs(folder)
-    else:
-        img_path = filename.strip()
+    img_path = get_path(title, filename)
 
     for _ in range(999):
         if not os.path.exists(img_path):
@@ -163,36 +149,34 @@ def get_img_path(url, folder, img_info, filename):
 
         if int(img_info["Content-Length"]) != int(len(open(img_path, "rb").read())):
             number = filename[filename.rfind("(") + 1:filename.rfind(")")]
+
             if number.isdigit() and filename.rsplit(".", 1)[1].lower() in IMG_EXTS:
                 file_number = int(number) + 1
                 filename = filename.rsplit("(", 1)[0].strip()
             else:
                 file_number = 2
                 filename = filename.rsplit(".", 1)[0]
-            # filename = filename.strip() + " (" + str(file_number) + ")" + extension
-            filename = "{} ({}){}".format(filename, file_number, extension)
-            if E.organize:
-                img_path = os.path.join(
-                    folder.strip(), filename)
-            else:
-                img_path = filename
+
+            filename = f"{filename} ({file_number}){extension}"
+
+            img_path = get_path(title, filename)
         else:
             return None
 
 
-# def test(folder, file):
-#     if E.organize:
-#         if folder is None:
-#             folder = "Untitled"
-#         for char in SPECIAL_CHARS:
-#             folder = folder.replace(char, "")
-#         folder = folder.strip()
-#         img_path = os.path.join(folder, filename)
-#         if not os.path.exists(folder):
-#             os.makedirs(folder)
-#     else:
-#         img_path = filename.strip()
-# 
+def get_path(title, file):
+    path = ''
+    if E.dir:
+        path = E.dir
+
+    if E.organize:
+        path = os.path.join(path, title.strip())
+        if not os.path.exists(path):
+            os.makedirs(path)
+
+    path = os.path.join(path, file.strip())
+    return path
+
 
 
 def work_page(page_q, pic_q):
