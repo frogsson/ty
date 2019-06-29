@@ -12,8 +12,9 @@ import tistory_extractor as tistory
 import httpbin
 import argparser
 
-# issue: if multiple pages have the same url saved to same directory they'll be marked as "already saved"
-# fix title_filter
+# issue: if multiple pages have the same url saved to same directory
+# from different multiple [-p/--pages] they'll be marked as "already saved"
+# doesn't break it but will mess up the stat report
 
 CONTENT_TYPES = ["image/jpeg", "image/png", "image/gif, image/webp"]
 IMG_EXTS = ['jpg', 'jpeg', 'png', 'gif', 'webp']
@@ -98,10 +99,10 @@ def download(pic_q):
                 try:
                     with open(img_path, 'wb') as f:
                         f.write(content.body())
+                    SAVED += 1
                 except Exception as err:
                     logging.info('Error: %s', err)
 
-                SAVED += 1
             else:
                 EXISTING += 1
 
@@ -203,7 +204,7 @@ def parse_multiple_pages(page_q, pic_q):
 def parse_page(url, pic_q, page_num=''):
     html = httpbin.Fetch(url).body()
     if html:
-        page = tistory.Extractor(url, html)
+        page = tistory.Extractor(url, html, SETTINGS.get_title_filter())
         for link in page.get_links():
             pic_q.put(link)
 

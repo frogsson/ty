@@ -28,8 +28,6 @@ class ArgSettings:
 
     def set_url(self, url):
         """sets url"""
-        if not url.endswith("/"):
-            url = url + "/"
         self.url = url
 
     def get_url(self):
@@ -47,6 +45,9 @@ class ArgSettings:
 
     def gather_pages(self, nums):
         """gathers pages between numbers given"""
+        if not self.url.endswith("/"):
+            self.url = self.url + "/"
+
         if nums[0] < nums[1]:
             fnum, snum = nums[0], nums[1]
         else:

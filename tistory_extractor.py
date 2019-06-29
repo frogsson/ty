@@ -20,12 +20,13 @@ class Extractor:
     }
     special_chars = r'\"#$%&\'()*+,./:;<=>?@[\\]^`{|}~'
 
-    def __init__(self, page_url, page_html):
+    def __init__(self, page_url, page_html, t_filter):
         self.logger = logging.getLogger('Tistory Extractor')
         self.page_url = urllib.parse.urlparse(page_url)
         self.html = page_html.decode('utf-8', 'replace')
         self.title = self.find_title()
         self.links = []
+        self.t_filter = t_filter
 
         self.find_links()
 
@@ -95,6 +96,15 @@ class Extractor:
         if "/tistory_admin/" in components.path:
             self.logger.debug('found /tistory_admin/ in: %s', components.geturl())
             return True
+
+        if self.t_filter:
+            greenlit = True
+            for word in self.t_filter:
+                if word in self.title:
+                    greenlit = False
+
+            if greenlit:
+                return True
 
         return False
 
