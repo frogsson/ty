@@ -4,6 +4,7 @@ import urllib.request
 import urllib.parse
 import threading
 import logging
+import hashlib
 import queue
 import sys
 import os
@@ -11,10 +12,7 @@ import tistory_extractor as tistory
 import httpbin
 import argparser
 
-
-
 # issue: if multiple pages have the same url saved to same directory they'll be marked as "already saved"
-# hash check duplicate files instead of checking name and file size
 # fix title_filter
 
 CONTENT_TYPES = ["image/jpeg", "image/png", "image/gif, image/webp"]
@@ -48,7 +46,7 @@ def run():
         if html:
             parse_page(SETTINGS.get_url(), pic_q)
         else:
-             sys.exit()
+            sys.exit()
     total_img_found = pic_q.qsize()
 
     # Starts the download
@@ -69,8 +67,8 @@ def run():
             logging.info(url)
 
 
-def start_threads(target, q, t):
-    img_threads = [threading.Thread(target=target, args=q) for i in range(t)]
+def start_threads(target, q, n):
+    img_threads = [threading.Thread(target=target, args=q) for i in range(n)]
     for thread in img_threads:
         thread.start()
     for thread in img_threads:
@@ -92,7 +90,8 @@ def download(pic_q):
 
         logging.info(url)
         with LOCK:
-            img_path = get_img_path(url, title, content.info(), filename=data['filename'])
+            filename = check_filename(data['filename'], content.info(), url)
+            img_path = get_img_path(title, content, filename)
             if SETTINGS.debug:
                 continue
             if img_path:
@@ -107,7 +106,55 @@ def download(pic_q):
                 EXISTING += 1
 
 
-def get_img_path(url, title, img_info, filename):
+def get_img_path(title, content, filename):
+    extension = "." + content.info()["Content-Type"].split("/")[1]
+    extension = extension.replace("jpeg", "jpg").strip()
+
+    if '.' in filename and filename.rsplit('.', 1)[1] not in IMG_EXTS:
+        # if filename randomly has a dot in its name
+        filename = filename + extension
+    elif '.' not in filename:
+        # no filename has no extension
+        filename = filename + extension
+
+    img_path = get_path(title, filename)
+
+    for _ in range(999):
+        if not os.path.exists(img_path):
+            return img_path
+
+        existing_file = open(img_path, 'rb').read()
+
+        if same_file(existing_file, content.body()):
+            break
+        else:
+            number = filename[filename.rfind("(") + 1:filename.rfind(")")]
+
+            if number.isdigit() and filename.rsplit(".", 1)[1].lower() in IMG_EXTS:
+                file_number = int(number) + 1
+                filename = filename.rsplit("(", 1)[0]
+            else:
+                file_number = 2
+                filename = filename.rsplit(".", 1)[0]
+
+            filename = f"{filename} ({file_number}){extension}"
+
+            img_path = get_path(title, filename)
+
+    return None
+
+
+def same_file(file1, file2):
+    hash1 = hashlib.md5(file1)
+    hash2 = hashlib.md5(file2)
+
+    if hash1.digest() == hash2.digest():
+        return True
+
+    return False
+
+
+def check_filename(filename, img_info, url):
     if img_info['Content-Disposition'] and not filename:
         # filename fallback 1
         filename = img_info['Content-Disposition']
@@ -128,37 +175,7 @@ def get_img_path(url, title, img_info, filename):
         filename = 'image'
 
     filename = filename.strip()
-    extension = "." + img_info["Content-Type"].split("/")[1]
-    extension = extension.replace("jpeg", "jpg")
-
-    if '.' in filename and filename.rsplit('.', 1)[1] not in IMG_EXTS:
-        # if filename randomly has a dot in its name
-        filename = filename + extension
-    elif '.' not in filename:
-        # no filename has no extension
-        filename = filename + extension
-
-    img_path = get_path(title, filename)
-
-    for _ in range(999):
-        if not os.path.exists(img_path):
-            return img_path
-
-        if int(img_info["Content-Length"]) != int(len(open(img_path, "rb").read())):
-            number = filename[filename.rfind("(") + 1:filename.rfind(")")]
-
-            if number.isdigit() and filename.rsplit(".", 1)[1].lower() in IMG_EXTS:
-                file_number = int(number) + 1
-                filename = filename.rsplit("(", 1)[0].strip()
-            else:
-                file_number = 2
-                filename = filename.rsplit(".", 1)[0]
-
-            filename = f"{filename} ({file_number}){extension}"
-
-            img_path = get_path(title, filename)
-        else:
-            return None
+    return filename
 
 
 def get_path(title, file):
