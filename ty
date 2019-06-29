@@ -91,7 +91,9 @@ def download(pic_q):
 
         logging.info(url)
         with LOCK:
-            filename = check_filename(data['filename'], content.info(), url)
+            filename = data["filename"]
+            if not filename:
+                filename = filename_fallback(filename, content.info(), url)
             img_path = get_img_path(title, content, filename)
             if SETTINGS.debug:
                 continue
@@ -155,8 +157,8 @@ def same_file(file1, file2):
     return False
 
 
-def check_filename(filename, img_info, url):
-    if img_info['Content-Disposition'] and not filename:
+def filename_fallback(filename, img_info, url):
+    if img_info['Content-Disposition']:
         # filename fallback 1
         filename = img_info['Content-Disposition']
         if "filename*=UTF-8" in filename:
