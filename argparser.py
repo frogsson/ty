@@ -28,6 +28,8 @@ class ArgSettings:
 
     def set_url(self, url):
         """sets url"""
+        if not url.endswith("/"):
+            url = url + "/"
         self.url = url
 
     def get_url(self):
@@ -54,7 +56,7 @@ class ArgSettings:
             self.pages.append(num)
         self.logger.debug('pages: %s', self.pages)
 
-    def page_status(self):
+    def multiplepages(self):
         """return true if it there's multiple pages"""
         if self.pages:
             return True
@@ -189,7 +191,7 @@ if __name__ == "__main__":
         SETTINGS = parse(sys.argv[1:])
     else:
         logging.debug('args: %s', sys.argv)
-        SETTINGS = parse('https://sparkles805.tistory.com/228 hello -o -p 1 5 -t 12 --debug -f hello/world'.split())
+        SETTINGS = parse('https://sparkles805.tistory.com/228 -o -p 1 5 -t 12 --debug -f hello/world'.split())
 
     logging.debug("organize: %s", SETTINGS.organize_status())
     logging.debug("url: %s", SETTINGS.get_url())

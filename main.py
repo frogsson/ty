@@ -7,76 +7,68 @@ import logging
 import queue
 import sys
 import os
-import argparser
 import tistory_extractor as tistory
 import httpbin
+import argparser
 
+
+
+# issue: if multiple pages have the same url saved to same directory they'll be marked as "already saved"
+# hash check duplicate files instead of checking name and file size
+# fix title_filter
 
 CONTENT_TYPES = ["image/jpeg", "image/png", "image/gif, image/webp"]
 IMG_EXTS = ['jpg', 'jpeg', 'png', 'gif', 'webp']
 LOCK = threading.Lock()
-
-# issue: if multiple pages have the same url saved to same directory they'll be marked as "already saved"
-
-
-class E:
-    imgs_downloaded = 0
-    already_found = 0
+DOWNLOADED = 0
+EXISTING = 0
 
 
 def run(args):
-    pic_q = queue.Queue()
+    global SETTINGS
+    SETTINGS = argparser.parse(args[1:])
 
-    settings = argparser.parse(args[1:])
-    E.title_filter_words = settings.get_title_filter()
-    E.debug = settings.debug_status()
-    E.organize = settings.organize_status()
-    E.dir = settings.get_dir()
-
-    E.url = settings.get_url()
-    E.urlparse = urllib.parse.urlparse(E.url)
-
-    if E.debug:
+    if SETTINGS.debug_status():
         logging.basicConfig(level=logging.DEBUG, format='%(name)s: %(message)s')
     else:
-        logging.basicConfig(level=logging.INFO, format='%(name)s: %(message)s')
+        logging.basicConfig(level=logging.INFO, format='%(message)s')
 
-    logging.debug('%s', E.url)
+    logging.debug('%s', SETTINGS.get_url())
+
+    pic_q = queue.Queue()
 
     # Parse pages for images
-    if settings.page_status():
-        if not E.url.endswith("/"):
-            E.url = E.url + "/"
+    if SETTINGS.multiplepages():
         page_q = queue.Queue()
-        for page in settings.get_pages():
+        for page in SETTINGS.get_pages():
             page_q.put(page)
-        print("Fetching source for:")
-        start_threads(work_page, [page_q, pic_q], settings.get_threads())
+        logging.info("Fetching source for:")
+        start_threads(parse_multiple_pages, [page_q, pic_q], SETTINGS.get_threads())
     else:
-        print("Fetching page source...")
-        html = httpbin.Fetch(E.url).body()
+        logging.info("Fetching page source...")
+        html = httpbin.Fetch(SETTINGS.get_url()).body()
         if html:
-            parse_page(E.url, html, '', pic_q)
+            parse_page(SETTINGS.get_url(), pic_q)
         else:
-            sys.exit()
+             sys.exit()
     total_img_found = pic_q.qsize()
 
     # Starts the download
-    print("\nStarting download:")
-    start_threads(download, [pic_q], settings.get_threads())
+    logging.info("\nStarting download:")
+    start_threads(download, [pic_q], SETTINGS.get_threads())
 
     # Final report
-    print("\nDone!")
-    print("Found:", total_img_found)
-    if E.imgs_downloaded > 0:
-        print("Saved:", E.imgs_downloaded)
-    if E.already_found > 0:
-        print("Already saved:", E.already_found)
+    logging.info("\nDone!")
+    logging.info(f"Found: {total_img_found}")
+    if DOWNLOADED > 0:
+        logging.info(f"Saved: {DOWNLOADED}")
+    if EXISTING > 0:
+        logging.info(f"Already saved: {EXISTING}")
 
     if httpbin.Fetch.errors:
-        print("\nCould not download:")
+        logging.info("\nCould not download:")
         for url in httpbin.Fetch.errors:
-            print(url)
+            logging.info(url)
 
 
 def start_threads(target, q, t):
@@ -88,6 +80,9 @@ def start_threads(target, q, t):
 
 
 def download(pic_q):
+    global DOWNLOADED
+    global EXISTING
+
     while pic_q.qsize() > 0:
         data = pic_q.get()
         url = data["url"]
@@ -97,17 +92,21 @@ def download(pic_q):
         if not content:
             continue
 
-        print(url)
+        logging.info(url)
         with LOCK:
             img_path = get_img_path(url, title, content.info(), filename=data['filename'])
-            if E.debug:
+            if SETTINGS.debug:
                 continue
             if img_path:
-                with open(img_path, 'wb') as f:
-                    f.write(content.body())
-                E.imgs_downloaded += 1
+                try:
+                    with open(img_path, 'wb') as f:
+                        f.write(content.body())
+                except Exception as err:
+                    logging.info('Error: %s', err)
+
+                DOWNLOADED += 1
             else:
-                E.already_found += 1
+                EXISTING += 1
 
 
 def get_img_path(url, title, img_info, filename):
@@ -166,41 +165,34 @@ def get_img_path(url, title, img_info, filename):
 
 def get_path(title, file):
     path = ''
-    if E.dir:
-        path = E.dir
+    if SETTINGS.directory:
+        path = SETTINGS.directory
 
-    if E.organize:
+    if SETTINGS.organize:
         path = os.path.join(path, title.strip())
         if not os.path.exists(path):
             os.makedirs(path)
 
-    path = os.path.join(path, file.strip())
+    path = os.path.join(path, file)
     return path
 
 
-
-def work_page(page_q, pic_q):
+def parse_multiple_pages(page_q, pic_q):
     while page_q.qsize() > 0:
         page_num = page_q.get()
-        url = E.url + str(page_num)
-        print(url)
-        html = httpbin.Fetch(url).body()
-        if html is not None:
-            parse_page(url, html, page_num, pic_q)
+        url = "{}{}".format(SETTINGS.get_url(), page_num)
+        parse_page(url, pic_q, page_num)
 
 
-def parse_page(page_url, page_html, page_number, pic_q):
-    page = tistory.Extractor(page_url, page_html, page_number)
-    for link in page.get_links():
-        pic_q.put(link)
+def parse_page(url, pic_q, page_num=''):
+    logging.info(url)
+    html = httpbin.Fetch(url).body()
+    if html:
+        page = tistory.Extractor(url, html)
+        for link in page.get_links():
+            pic_q.put(link)
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.DEBUG, format='%(name)s: %(message)s')
-
-    if len(sys.argv) > 1:
-        ARG = sys.argv
-    else:
-        ARG = 'ty https://ohcori.tistory.com/321 --debug -o -t 1 -f hello/world'.split()
-
-    run(ARG)
+    ARGS = 'ty https://ohcori.tistory.com/ --debug -p 301 305 -o -t 2 -f hello/world'.split()
+    run(ARGS)

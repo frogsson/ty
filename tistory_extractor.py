@@ -18,14 +18,13 @@ class Extractor:
         'filename_fallback1': re.compile('filename=["\'](.+?)["\']'),
         'filename_fallback2': re.compile('file_name=["\'](.+?)["\']'),
     }
-    special_chars = r'!\"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'
+    special_chars = r'\"#$%&\'()*+,./:;<=>?@[\\]^`{|}~'
 
-    def __init__(self, page_url, page_html, page_num):
+    def __init__(self, page_url, page_html):
         self.logger = logging.getLogger('Tistory Extractor')
         self.page_url = urllib.parse.urlparse(page_url)
         self.html = page_html.decode('utf-8', 'replace')
         self.title = self.find_title()
-        self.page_num = page_num
         self.links = []
 
         self.find_links()
@@ -77,7 +76,7 @@ class Extractor:
 
                 url_info = {'url': url_components.geturl(),
                             'title': self.title,
-                            'page': self.page_num,
+                            'page_url': self.page_url,
                             'filename': self.find_filename(imgtag[0])}
 
                 if url_info not in self.links:
@@ -162,5 +161,5 @@ if __name__ == "__main__":
 
     u = 'https://jjoggomi.tistory.com/803'
     import urllib.request
-    r = urllib.request.urlopen(u)
-    extractor = Extractor(u, r, "")
+    r = urllib.request.urlopen(u).read()
+    extractor = Extractor(u, r)
